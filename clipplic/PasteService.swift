@@ -23,14 +23,16 @@ public final class PasteService {
         }
     }
 
-    public func restoreAndPaste(item: ClipboardItem, manager: ClipboardManager, autoPaste: Bool = true) {
+    public func restoreAndPaste(item: ClipboardItem, manager: ClipboardManager, autoPaste: Bool? = nil) {
+        let shouldAutoPaste = autoPaste ?? PreferencesService.shared.autoPasteOnEnter
+
         // 1. Copy item to pasteboard
         manager.copyToClipboard(item)
 
         // 2. Hide HUD window
         FloatingPanelController.shared.hide()
 
-        guard autoPaste, let targetApp = previousApp else { return }
+        guard shouldAutoPaste, let targetApp = previousApp else { return }
 
         // 3. Reactivate target application
         targetApp.activate()

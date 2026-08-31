@@ -15,6 +15,11 @@ struct clipplicApp: App {
                 .environment(ClipboardManager.shared)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+                .environment(ClipboardManager.shared)
+        }
     }
 }
 

@@ -202,6 +202,11 @@ struct ContentView: View {
                     manager.clearHistory(includingPinned: true)
                 }
                 Divider()
+                Button("Settings...") {
+                    SettingsWindowController.shared.show()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+                Divider()
                 Button("Quit Clipplic") {
                     NSApplication.shared.terminate(nil)
                 }

@@ -576,12 +576,13 @@ struct FloatingHUDView: View {
 
     // MARK: - Footer Shortcuts Bar
     private var footerShortcutsBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ShortcutHint(key: "↵", label: "Paste")
             ShortcutHint(key: "Space", label: "Quick Look")
             ShortcutHint(key: "⌘1..9", label: "Quick Paste")
             ShortcutHint(key: "⌘P", label: "Pin")
             ShortcutHint(key: "⌘⌫", label: "Delete")
+            ShortcutHint(key: "⌘,", label: "Settings")
 
             Spacer()
 
@@ -694,6 +695,12 @@ struct FloatingHUDView: View {
                         selectedItemId = first.id
                     }
                 }
+                return nil
+            }
+            // Command + Comma (⌘, Open Settings)
+            if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "," {
+                FloatingPanelController.shared.hide()
+                SettingsWindowController.shared.show()
                 return nil
             }
 

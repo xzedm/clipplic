@@ -26,7 +26,7 @@ public final class ClipboardManager {
         self.storage = defaultStorage
         self.monitor = ClipboardMonitor()
         self.items = defaultStorage.load()
-
+        pruneExpiredItems()
         setupMonitoring()
     }
 
@@ -34,7 +34,7 @@ public final class ClipboardManager {
         self.storage = storage
         self.monitor = ClipboardMonitor()
         self.items = storage.load()
-
+        pruneExpiredItems()
         setupMonitoring()
     }
 
@@ -224,13 +224,30 @@ public final class ClipboardManager {
             ScreenshotWatcher.shared.stop()
         }
     }
+    public func pruneExpiredItems() {
+        let retentionDays = PreferencesService.shared.retentionDays
+        guard retentionDays > 0 else { return }
+
+        guard let cutoffDate = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date()) else { return }
+
+        let expiredUnpinned = items.filter { !$0.isPinned && $0.createdAt < cutoffDate }
+        for item in expiredUnpinned {
+            if let fileName = item.imageFileName {
+                storage.deleteImage(for: fileName)
+            }
+        }
+
+        items.removeAll { !$0.isPinned && $0.createdAt < cutoffDate }
+        storage.save(items: items)
+    }
 
     private func enforceHistoryLimit() {
-        guard items.count > maxHistoryLimit else { return }
+        let limit = PreferencesService.shared.historyLimit
+        guard items.count > limit else { return }
 
         let pinned = items.filter { $0.isPinned }
         let unpinned = items.filter { !$0.isPinned }
-        let allowedUnpinned = max(0, maxHistoryLimit - pinned.count)
+        let allowedUnpinned = max(0, limit - pinned.count)
         let trimmedUnpinned = Array(unpinned.prefix(allowedUnpinned))
 
         // Delete discarded unpinned images from disk

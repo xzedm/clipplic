@@ -59,8 +59,17 @@ public final class ClipboardMonitor {
             return
         }
 
-        // Privacy Check: Skip concealed or password manager data
-        if let types = pasteboard.types {
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let appName = frontmost?.localizedName
+        let bundleID = frontmost?.bundleIdentifier
+
+        // Privacy Check 1: Ignored Application check
+        if PreferencesService.shared.isAppIgnored(bundleID: bundleID) {
+            return
+        }
+
+        // Privacy Check 2: Skip concealed or password manager data
+        if PreferencesService.shared.filterPasswordManagers, let types = pasteboard.types {
             let containsSensitive = types.contains { pasteboardType in
                 Self.sensitivePasteboardTypes.contains(pasteboardType)
             }
@@ -69,9 +78,6 @@ public final class ClipboardMonitor {
             }
         }
 
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        let appName = frontmost?.localizedName
-        let bundleID = frontmost?.bundleIdentifier
         let itemId = UUID()
 
         // 1. Check for Copied Image Data (Screenshots, browser images, Photoshop)
