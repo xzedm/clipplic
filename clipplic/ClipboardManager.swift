@@ -44,8 +44,16 @@ public final class ClipboardManager {
                 self?.handleNewCopiedItem(newItem, imageData: imageData)
             }
         }
+
+        ScreenshotWatcher.shared.onScreenshotCaptured = { [weak self] newItem, imageData in
+            Task { @MainActor [weak self] in
+                self?.handleNewCopiedItem(newItem, imageData: imageData)
+            }
+        }
+
         if isMonitoring {
             monitor.start()
+            ScreenshotWatcher.shared.start()
         }
     }
 
@@ -210,8 +218,10 @@ public final class ClipboardManager {
         isMonitoring.toggle()
         if isMonitoring {
             monitor.start()
+            ScreenshotWatcher.shared.start()
         } else {
             monitor.stop()
+            ScreenshotWatcher.shared.stop()
         }
     }
 

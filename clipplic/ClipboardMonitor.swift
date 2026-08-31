@@ -74,25 +74,7 @@ public final class ClipboardMonitor {
         let bundleID = frontmost?.bundleIdentifier
         let itemId = UUID()
 
-        // 1. Check for Copied Files (Finder)
-        if let filePaths = extractFilePaths(), !filePaths.isEmpty {
-            let contentHash = "files:" + filePaths.sorted().joined(separator: "|")
-            let item = ClipboardItem(
-                id: itemId,
-                contentType: .file,
-                textContent: filePaths.joined(separator: "\n"),
-                filePaths: filePaths,
-                createdAt: Date(),
-                isPinned: false,
-                sourceAppName: appName ?? "Finder",
-                sourceAppBundleID: bundleID,
-                contentHash: contentHash
-            )
-            onItemCopied?(item, nil)
-            return
-        }
-
-        // 2. Check for Copied Images (PNG / TIFF / Screenshots)
+        // 1. Check for Copied Image Data (Screenshots, browser images, Photoshop)
         if let (pngData, size) = extractImageData() {
             let hashString = "img:" + SHA256.hash(data: pngData).compactMap { String(format: "%02x", $0) }.joined()
             let fileName = "\(itemId.uuidString).png"
@@ -112,6 +94,51 @@ public final class ClipboardMonitor {
                 contentHash: hashString
             )
             onItemCopied?(item, pngData)
+            return
+        }
+
+        // 2. Check for Copied Files (Finder)
+        if let filePaths = extractFilePaths(), !filePaths.isEmpty {
+            // Check if it's a single image file copied from Finder
+            if filePaths.count == 1, isImageFilePath(filePaths[0]) {
+                let path = filePaths[0]
+                if let fileData = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                   let image = NSImage(data: fileData) {
+                    let hashString = "img:" + SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
+                    let fileName = "\(itemId.uuidString).png"
+                    let item = ClipboardItem(
+                        id: itemId,
+                        contentType: .image,
+                        textContent: nil,
+                        imageFileName: fileName,
+                        imageWidth: Double(image.size.width),
+                        imageHeight: Double(image.size.height),
+                        imageByteSize: fileData.count,
+                        filePaths: filePaths,
+                        createdAt: Date(),
+                        isPinned: false,
+                        sourceAppName: appName ?? "Finder",
+                        sourceAppBundleID: bundleID,
+                        contentHash: hashString
+                    )
+                    onItemCopied?(item, fileData)
+                    return
+                }
+            }
+
+            let contentHash = "files:" + filePaths.sorted().joined(separator: "|")
+            let item = ClipboardItem(
+                id: itemId,
+                contentType: .file,
+                textContent: filePaths.joined(separator: "\n"),
+                filePaths: filePaths,
+                createdAt: Date(),
+                isPinned: false,
+                sourceAppName: appName ?? "Finder",
+                sourceAppBundleID: bundleID,
+                contentHash: contentHash
+            )
+            onItemCopied?(item, nil)
             return
         }
 
@@ -157,15 +184,24 @@ public final class ClipboardMonitor {
     }
 
     private func extractImageData() -> (Data, CGSize)? {
-        // Direct PNG
-        if let pngData = pasteboard.data(forType: .png) {
+        // 1. Direct PNG data
+        if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
             if let image = NSImage(data: pngData) {
                 return (pngData, image.size)
             }
         }
 
-        // TIFF conversion to PNG
-        if let tiffData = pasteboard.data(forType: .tiff) {
+        // 2. TIFF conversion to PNG (Native macOS screenshot format)
+        if let tiffData = pasteboard.data(forType: .tiff), !tiffData.isEmpty {
+            if let imageRep = NSBitmapImageRep(data: tiffData),
+               let pngData = imageRep.representation(using: .png, properties: [:]) {
+                let size = CGSize(width: imageRep.pixelsWide, height: imageRep.pixelsHigh)
+                return (pngData, size)
+            }
+        }
+
+        // 3. NSImage from pasteboard objects
+        if let image = NSImage(pasteboard: pasteboard), let tiffData = image.tiffRepresentation {
             if let imageRep = NSBitmapImageRep(data: tiffData),
                let pngData = imageRep.representation(using: .png, properties: [:]) {
                 let size = CGSize(width: imageRep.pixelsWide, height: imageRep.pixelsHigh)
@@ -174,6 +210,13 @@ public final class ClipboardMonitor {
         }
 
         return nil
+    }
+
+    private func isImageFilePath(_ path: String) -> Bool {
+        let lower = path.lowercased()
+        return lower.hasSuffix(".png") || lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") ||
+               lower.hasSuffix(".heic") || lower.hasSuffix(".webp") || lower.hasSuffix(".gif") ||
+               lower.hasSuffix(".tiff") || lower.hasSuffix(".bmp")
     }
 
     private func detectContentType(for string: String) -> ItemContentType {

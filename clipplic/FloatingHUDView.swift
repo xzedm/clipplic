@@ -321,7 +321,7 @@ struct FloatingHUDView: View {
 
             Spacer()
 
-            if item.contentType == .file, let files = item.filePaths, let first = files.first {
+            if item.contentType == .file, let files = item.filePaths, !files.isEmpty {
                 Button {
                     let urls = files.map { URL(fileURLWithPath: $0) }
                     NSWorkspace.shared.activateFileViewerSelecting(urls)
