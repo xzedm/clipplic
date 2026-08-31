@@ -41,7 +41,7 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
         }
-        .frame(width: 390, height: 520)
+        .frame(width: 400, height: 530)
         .background(VisualEffectBackground().ignoresSafeArea())
         .onAppear {
             isSearchFocused = true
@@ -88,14 +88,14 @@ struct ContentView: View {
                 FilterChip(title: "All", isSelected: manager.selectedTypeFilter == nil) {
                     manager.selectedTypeFilter = nil
                 }
-                FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
-                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
-                }
                 FilterChip(title: "Images", systemImage: "photo", isSelected: manager.selectedTypeFilter == .image) {
                     manager.selectedTypeFilter = (manager.selectedTypeFilter == .image) ? nil : .image
                 }
                 FilterChip(title: "Files", systemImage: "folder", isSelected: manager.selectedTypeFilter == .file) {
                     manager.selectedTypeFilter = (manager.selectedTypeFilter == .file) ? nil : .file
+                }
+                FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
+                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
                 }
                 FilterChip(title: "Links", systemImage: "link", isSelected: manager.selectedTypeFilter == .url) {
                     manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
@@ -238,12 +238,12 @@ struct ClipboardItemRow: View {
 
     var body: some View {
         Button(action: onCopy) {
-            HStack(alignment: .top, spacing: 10) {
-                // Thumbnail or Type Icon Badge
+            HStack(alignment: .center, spacing: 10) {
+                // High-visibility thumbnail or visual badge
                 leadingVisualBadge
 
                 // Text Content & Metadata
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(item.previewTitle)
                         .font(.system(size: 12.5, weight: .regular))
                         .foregroundColor(.primary)
@@ -260,7 +260,7 @@ struct ClipboardItemRow: View {
                     // Metadata footer
                     HStack(spacing: 6) {
                         Text(formattedTime(item.createdAt))
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 10))
                             .foregroundColor(.secondary.opacity(0.8))
 
                         if let appName = item.sourceAppName {
@@ -268,16 +268,23 @@ struct ClipboardItemRow: View {
                                 .font(.system(size: 8))
                                 .foregroundColor(.secondary.opacity(0.5))
                             Text(appName)
-                                .font(.system(size: 10.5))
+                                .font(.system(size: 10))
                                 .foregroundColor(.secondary.opacity(0.8))
                         }
 
-                        if item.characterCount > 0 {
+                        if item.contentType == .image, let size = item.imageByteSize {
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        } else if item.characterCount > 0 {
                             Text("•")
                                 .font(.system(size: 8))
                                 .foregroundColor(.secondary.opacity(0.5))
                             Text("\(item.characterCount) chars")
-                                .font(.system(size: 10.5))
+                                .font(.system(size: 10))
                                 .foregroundColor(.secondary.opacity(0.6))
                         }
                     }
@@ -336,6 +343,19 @@ struct ClipboardItemRow: View {
             Button("Copy to Clipboard") {
                 onCopy()
             }
+            if item.contentType == .image, let fileName = item.imageFileName {
+                Button("Open in Preview") {
+                    let url = storage.imageURL(for: fileName)
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            if item.contentType == .file, let files = item.filePaths {
+                Button("Reveal in Finder") {
+                    let urls = files.map { URL(fileURLWithPath: $0) }
+                    NSWorkspace.shared.activateFileViewerSelecting(urls)
+                }
+            }
+            Divider()
             Button(item.isPinned ? "Unpin" : "Pin to Top") {
                 onTogglePin()
             }
@@ -352,17 +372,22 @@ struct ClipboardItemRow: View {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 26, height: 26)
+                .frame(width: 36, height: 26)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
                 .overlay(
                     RoundedRectangle(cornerRadius: 5)
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                        .stroke(Color.secondary.opacity(0.25), lineWidth: 0.5)
                 )
+                .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+        } else if item.contentType == .file, let files = item.filePaths, let first = files.first {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: first))
+                .resizable()
+                .frame(width: 26, height: 26)
         } else {
             Image(systemName: item.systemImageName)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(iconColor)
-                .frame(width: 24, height: 24)
+                .frame(width: 26, height: 26)
                 .background(iconColor.opacity(0.12))
                 .cornerRadius(5)
         }
