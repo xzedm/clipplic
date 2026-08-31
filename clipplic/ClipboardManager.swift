@@ -11,6 +11,7 @@ import Observation
 @MainActor
 public final class ClipboardManager {
     public static let shared = ClipboardManager()
+
     public var items: [ClipboardItem] = []
     public var searchText: String = ""
     public var selectedTypeFilter: ItemContentType? = nil
@@ -18,7 +19,7 @@ public final class ClipboardManager {
     public var maxHistoryLimit: Int = 500
 
     private let monitor: ClipboardMonitor
-    private let storage: StorageService
+    public let storage: StorageService
 
     public init() {
         let defaultStorage = StorageService()
@@ -38,9 +39,9 @@ public final class ClipboardManager {
     }
 
     private func setupMonitoring() {
-        monitor.onItemCopied = { [weak self] newItem in
+        monitor.onItemCopied = { [weak self] newItem, imageData in
             Task { @MainActor [weak self] in
-                self?.handleNewCopiedItem(newItem)
+                self?.handleNewCopiedItem(newItem, imageData: imageData)
             }
         }
         if isMonitoring {
@@ -59,16 +60,19 @@ public final class ClipboardManager {
 
             // Filter by search query
             if !query.isEmpty {
-                let matchesContent = item.textContent.localizedCaseInsensitiveContains(query)
+                let matchesContent = item.textContent?.localizedCaseInsensitiveContains(query) ?? false
+                let matchesPreview = item.previewTitle.localizedCaseInsensitiveContains(query)
                 let matchesSource = item.sourceAppName?.localizedCaseInsensitiveContains(query) ?? false
-                if !matchesContent && !matchesSource {
+                let matchesFiles = item.filePaths?.contains { $0.localizedCaseInsensitiveContains(query) } ?? false
+
+                if !matchesContent && !matchesPreview && !matchesSource && !matchesFiles {
                     return false
                 }
             }
 
             return true
         }.sorted { (lhs, rhs) -> Bool in
-            // Pinned items stay at the top, then newest first
+            // Pinned items stay at top, then newest first
             if lhs.isPinned != rhs.isPinned {
                 return lhs.isPinned && !rhs.isPinned
             }
@@ -80,25 +84,39 @@ public final class ClipboardManager {
         items.filter { $0.isPinned }.count
     }
 
-    public var todayCount: Int {
-        let calendar = Calendar.current
-        return items.filter { calendar.isDateInToday($0.createdAt) }.count
+    public var imagesCount: Int {
+        items.filter { $0.contentType == .image }.count
     }
 
-    public func handleNewCopiedItem(_ newItem: ClipboardItem) {
-        // Check for existing identical content to deduplicate
-        if let existingIndex = items.firstIndex(where: { $0.textContent == newItem.textContent }) {
+    public var filesCount: Int {
+        items.filter { $0.contentType == .file }.count
+    }
+
+    public func handleNewCopiedItem(_ newItem: ClipboardItem, imageData: Data?) {
+        // Save image if present
+        if let data = imageData, newItem.contentType == .image {
+            _ = storage.saveImageData(data, id: newItem.id)
+        }
+
+        // Deduplicate using contentHash
+        if let existingIndex = items.firstIndex(where: { $0.contentHash == newItem.contentHash }) {
             let existingItem = items.remove(at: existingIndex)
-            // Preserve pin status, update timestamp and source if available
+
             let updated = ClipboardItem(
                 id: existingItem.id,
                 contentType: newItem.contentType,
                 textContent: newItem.textContent,
                 rtfData: newItem.rtfData ?? existingItem.rtfData,
+                imageFileName: existingItem.imageFileName ?? newItem.imageFileName,
+                imageWidth: newItem.imageWidth ?? existingItem.imageWidth,
+                imageHeight: newItem.imageHeight ?? existingItem.imageHeight,
+                imageByteSize: newItem.imageByteSize ?? existingItem.imageByteSize,
+                filePaths: newItem.filePaths ?? existingItem.filePaths,
                 createdAt: Date(),
                 isPinned: existingItem.isPinned,
                 sourceAppName: newItem.sourceAppName ?? existingItem.sourceAppName,
-                sourceAppBundleID: newItem.sourceAppBundleID ?? existingItem.sourceAppBundleID
+                sourceAppBundleID: newItem.sourceAppBundleID ?? existingItem.sourceAppBundleID,
+                contentHash: newItem.contentHash
             )
             items.insert(updated, at: 0)
         } else {
@@ -115,23 +133,45 @@ public final class ClipboardManager {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
-        if let rtf = item.rtfData {
-            pasteboard.setData(rtf, forType: .rtf)
+        switch item.contentType {
+        case .image:
+            if let fileName = item.imageFileName, let image = storage.loadImage(for: fileName) {
+                pasteboard.writeObjects([image])
+            }
+
+        case .file:
+            if let filePaths = item.filePaths {
+                let fileURLs = filePaths.map { URL(fileURLWithPath: $0) as NSURL }
+                pasteboard.writeObjects(fileURLs)
+            }
+
+        case .text, .code, .url, .rtf:
+            if let rtf = item.rtfData {
+                pasteboard.setData(rtf, forType: .rtf)
+            }
+            if let text = item.textContent {
+                pasteboard.setString(text, forType: .string)
+            }
         }
-        pasteboard.setString(item.textContent, forType: .string)
 
         // Move the item to top as recently used
         if let index = items.firstIndex(where: { $0.id == item.id }) {
-            let updated = items.remove(at: index)
+            let existing = items.remove(at: index)
             let refreshed = ClipboardItem(
-                id: updated.id,
-                contentType: updated.contentType,
-                textContent: updated.textContent,
-                rtfData: updated.rtfData,
+                id: existing.id,
+                contentType: existing.contentType,
+                textContent: existing.textContent,
+                rtfData: existing.rtfData,
+                imageFileName: existing.imageFileName,
+                imageWidth: existing.imageWidth,
+                imageHeight: existing.imageHeight,
+                imageByteSize: existing.imageByteSize,
+                filePaths: existing.filePaths,
                 createdAt: Date(),
-                isPinned: updated.isPinned,
-                sourceAppName: updated.sourceAppName,
-                sourceAppBundleID: updated.sourceAppBundleID
+                isPinned: existing.isPinned,
+                sourceAppName: existing.sourceAppName,
+                sourceAppBundleID: existing.sourceAppBundleID,
+                contentHash: existing.contentHash
             )
             items.insert(refreshed, at: 0)
             storage.save(items: items)
@@ -145,6 +185,9 @@ public final class ClipboardManager {
     }
 
     public func deleteItem(_ item: ClipboardItem) {
+        if let fileName = item.imageFileName {
+            storage.deleteImage(for: fileName)
+        }
         items.removeAll { $0.id == item.id }
         storage.save(items: items)
     }
@@ -152,10 +195,15 @@ public final class ClipboardManager {
     public func clearHistory(includingPinned: Bool = false) {
         if includingPinned {
             items.removeAll()
+            storage.clear()
         } else {
+            let unpinnedImages = items.filter { !$0.isPinned }.compactMap { $0.imageFileName }
+            for fileName in unpinnedImages {
+                storage.deleteImage(for: fileName)
+            }
             items.removeAll { !$0.isPinned }
+            storage.save(items: items)
         }
-        storage.save(items: items)
     }
 
     public func toggleMonitoring() {
@@ -170,11 +218,20 @@ public final class ClipboardManager {
     private func enforceHistoryLimit() {
         guard items.count > maxHistoryLimit else { return }
 
-        // Keep all pinned items, trim oldest unpinned items
         let pinned = items.filter { $0.isPinned }
         let unpinned = items.filter { !$0.isPinned }
         let allowedUnpinned = max(0, maxHistoryLimit - pinned.count)
         let trimmedUnpinned = Array(unpinned.prefix(allowedUnpinned))
+
+        // Delete discarded unpinned images from disk
+        if unpinned.count > allowedUnpinned {
+            let dropped = unpinned.suffix(from: allowedUnpinned)
+            for item in dropped {
+                if let fileName = item.imageFileName {
+                    storage.deleteImage(for: fileName)
+                }
+            }
+        }
 
         items = (pinned + trimmedUnpinned).sorted { $0.createdAt > $1.createdAt }
     }

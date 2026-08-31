@@ -41,7 +41,7 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
         }
-        .frame(width: 380, height: 500)
+        .frame(width: 390, height: 520)
         .background(VisualEffectBackground().ignoresSafeArea())
         .onAppear {
             isSearchFocused = true
@@ -55,7 +55,7 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
                 .font(.system(size: 13, weight: .medium))
 
-            TextField("Search history or apps...", text: Bindable(manager).searchText)
+            TextField("Search text, links, images, files...", text: Bindable(manager).searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($isSearchFocused)
@@ -83,30 +83,25 @@ struct ContentView: View {
 
     // MARK: - Filters
     private var filterSection: some View {
-        HStack(spacing: 6) {
-            FilterChip(title: "All", isSelected: manager.selectedTypeFilter == nil) {
-                manager.selectedTypeFilter = nil
-            }
-            FilterChip(title: "Links", systemImage: "link", isSelected: manager.selectedTypeFilter == .url) {
-                manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
-            }
-            FilterChip(title: "Code", systemImage: "chevron.left.forwardslash.chevron.right", isSelected: manager.selectedTypeFilter == .code) {
-                manager.selectedTypeFilter = (manager.selectedTypeFilter == .code) ? nil : .code
-            }
-            FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
-                manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
-            }
-
-            Spacer()
-
-            if manager.pinnedCount > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(.orange)
-                    Text("\(manager.pinnedCount)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                FilterChip(title: "All", isSelected: manager.selectedTypeFilter == nil) {
+                    manager.selectedTypeFilter = nil
+                }
+                FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
+                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
+                }
+                FilterChip(title: "Images", systemImage: "photo", isSelected: manager.selectedTypeFilter == .image) {
+                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .image) ? nil : .image
+                }
+                FilterChip(title: "Files", systemImage: "folder", isSelected: manager.selectedTypeFilter == .file) {
+                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .file) ? nil : .file
+                }
+                FilterChip(title: "Links", systemImage: "link", isSelected: manager.selectedTypeFilter == .url) {
+                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
+                }
+                FilterChip(title: "Code", systemImage: "chevron.left.forwardslash.chevron.right", isSelected: manager.selectedTypeFilter == .code) {
+                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .code) ? nil : .code
                 }
             }
         }
@@ -120,6 +115,7 @@ struct ContentView: View {
                     ForEach(manager.filteredItems) { item in
                         ClipboardItemRow(
                             item: item,
+                            storage: manager.storage,
                             isHovered: hoveredItemId == item.id,
                             isRecentlyCopied: copiedFeedbackId == item.id,
                             onCopy: {
@@ -159,7 +155,7 @@ struct ContentView: View {
                 Text("Clipboard is empty")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.secondary)
-                Text("Copy text or links anywhere on your Mac")
+                Text("Copy text, links, screenshots, or files")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary.opacity(0.7))
             } else {
@@ -233,6 +229,7 @@ struct ContentView: View {
 // MARK: - Row View
 struct ClipboardItemRow: View {
     let item: ClipboardItem
+    let storage: StorageService
     let isHovered: Bool
     let isRecentlyCopied: Bool
     let onCopy: () -> Void
@@ -242,13 +239,8 @@ struct ClipboardItemRow: View {
     var body: some View {
         Button(action: onCopy) {
             HStack(alignment: .top, spacing: 10) {
-                // Type Icon Badge
-                Image(systemName: item.systemImageName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(iconColor)
-                    .frame(width: 22, height: 22)
-                    .background(iconColor.opacity(0.12))
-                    .cornerRadius(5)
+                // Thumbnail or Type Icon Badge
+                leadingVisualBadge
 
                 // Text Content & Metadata
                 VStack(alignment: .leading, spacing: 3) {
@@ -354,8 +346,34 @@ struct ClipboardItemRow: View {
         }
     }
 
+    @ViewBuilder
+    private var leadingVisualBadge: some View {
+        if item.contentType == .image, let fileName = item.imageFileName, let image = storage.loadImage(for: fileName) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 26, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                )
+        } else {
+            Image(systemName: item.systemImageName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(iconColor)
+                .frame(width: 24, height: 24)
+                .background(iconColor.opacity(0.12))
+                .cornerRadius(5)
+        }
+    }
+
     private var iconColor: Color {
         switch item.contentType {
+        case .image:
+            return .pink
+        case .file:
+            return .teal
         case .url:
             return .blue
         case .code:

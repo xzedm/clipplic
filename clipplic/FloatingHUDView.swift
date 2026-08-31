@@ -39,14 +39,14 @@ struct FloatingHUDView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
-                    // Left list (60% width)
+                    // Left list (52% width)
                     itemListPane
-                        .frame(width: 330)
+                        .frame(width: 320)
 
                     Divider()
                         .opacity(0.3)
 
-                    // Right detail preview pane (40% width)
+                    // Right detail preview pane (48% width)
                     detailPreviewPane
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -60,7 +60,7 @@ struct FloatingHUDView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         }
-        .frame(width: 640, height: 440)
+        .frame(width: 680, height: 460)
         .background(HUDVisualEffectView().ignoresSafeArea())
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -79,7 +79,6 @@ struct FloatingHUDView: View {
             stopLocalKeyboardMonitoring()
         }
         .onChange(of: manager.searchText) { _, _ in
-            // Re-select top item when search text changes
             if let first = items.first {
                 selectedItemId = first.id
             } else {
@@ -95,7 +94,7 @@ struct FloatingHUDView: View {
                 .foregroundColor(.secondary)
                 .font(.system(size: 16, weight: .medium))
 
-            TextField("Type to search history, links, snippets...", text: Bindable(manager).searchText)
+            TextField("Search history, images, files, links, code...", text: Bindable(manager).searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .focused($isSearchFieldFocused)
@@ -126,9 +125,10 @@ struct FloatingHUDView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 3) {
-                    ForEach(Array(items.prefix(100).enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(items.prefix(120).enumerated()), id: \.element.id) { index, item in
                         HUDItemRow(
                             item: item,
+                            storage: manager.storage,
                             index: index,
                             isSelected: selectedItem?.id == item.id,
                             onSelect: {
@@ -190,51 +190,16 @@ struct FloatingHUDView: View {
                     Divider()
                         .opacity(0.3)
 
-                    // Text content preview
-                    ScrollView {
-                        Text(item.textContent)
-                            .font(.system(size: 12, design: item.contentType == .code ? .monospaced : .default))
-                            .foregroundColor(.primary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(4)
-                    }
+                    // Content preview based on type
+                    detailBodyView(for: item)
 
                     Spacer()
 
                     Divider()
                         .opacity(0.3)
 
-                    // Stats & Action
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(item.characterCount) characters · \(item.lineCount) lines")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                            Text("Copied \(formattedDateTime(item.createdAt))")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary.opacity(0.8))
-                        }
-
-                        Spacer()
-
-                        Button {
-                            pasteItem(item)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.turn.down.left")
-                                    .font(.system(size: 10, weight: .bold))
-                                Text("Paste")
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.accentColor)
-                            .foregroundColor(.white)
-                            .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    // Stats & Action Footer
+                    detailFooterView(for: item)
                 }
                 .padding(12)
             } else {
@@ -246,6 +211,147 @@ struct FloatingHUDView: View {
                     Spacer()
                 }
             }
+        }
+    }
+
+    // MARK: - Detail Body Views
+    @ViewBuilder
+    private func detailBodyView(for item: ClipboardItem) -> some View {
+        switch item.contentType {
+        case .image:
+            if let fileName = item.imageFileName, let image = manager.storage.loadImage(for: fileName) {
+                VStack(spacing: 8) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                        .shadow(radius: 4)
+
+                    HStack(spacing: 12) {
+                        if let w = item.imageWidth, let h = item.imageHeight {
+                            Label("\(Int(w)) × \(Int(h)) px", systemImage: "aspectratio")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        if let size = item.imageByteSize {
+                            Label(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file), systemImage: "internaldrive")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            } else {
+                Text("Image data not available")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+        case .file:
+            if let files = item.filePaths {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(files, id: \.self) { path in
+                            HStack(spacing: 8) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: path))
+                                    .resizable()
+                                    .frame(width: 20, height: 20)
+
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(URL(fileURLWithPath: path).lastPathComponent)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.primary)
+                                    Text(URL(fileURLWithPath: path).deletingLastPathComponent().path)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.08))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+            }
+
+        case .text, .code, .url, .rtf:
+            ScrollView {
+                Text(item.textContent ?? "")
+                    .font(.system(size: 12, design: item.contentType == .code ? .monospaced : .default))
+                    .foregroundColor(.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(4)
+            }
+        }
+    }
+
+    // MARK: - Detail Footer
+    @ViewBuilder
+    private func detailFooterView(for item: ClipboardItem) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                if item.contentType == .image {
+                    Text("Copied image")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                } else if item.contentType == .file {
+                    Text("\(item.filePaths?.count ?? 0) file(s)")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("\(item.characterCount) characters · \(item.lineCount) lines")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                Text("Copied \(formattedDateTime(item.createdAt))")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.8))
+            }
+
+            Spacer()
+
+            if item.contentType == .file, let files = item.filePaths, let first = files.first {
+                Button {
+                    let urls = files.map { URL(fileURLWithPath: $0) }
+                    NSWorkspace.shared.activateFileViewerSelecting(urls)
+                } label: {
+                    Text("Reveal in Finder")
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.15))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button {
+                pasteItem(item)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.turn.down.left")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Paste")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.accentColor)
+                .foregroundColor(.white)
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -346,7 +452,6 @@ struct FloatingHUDView: View {
             if event.modifierFlags.contains(.command), event.keyCode == 51 {
                 if let item = selectedItem {
                     manager.deleteItem(item)
-                    // Move selection to current position
                     if let first = items.first {
                         selectedItemId = first.id
                     }
@@ -376,6 +481,7 @@ struct FloatingHUDView: View {
 // MARK: - HUD Item Row
 struct HUDItemRow: View {
     let item: ClipboardItem
+    let storage: StorageService
     let index: Int
     let isSelected: Bool
     let onSelect: () -> Void
@@ -395,10 +501,8 @@ struct HUDItemRow: View {
                         .frame(width: 14)
                 }
 
-                // Type Icon
-                Image(systemName: item.systemImageName)
-                    .font(.system(size: 11))
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                // Visual Icon / Thumbnail
+                leadingItemVisual
 
                 // Title
                 Text(item.previewTitle)
@@ -432,6 +536,21 @@ struct HUDItemRow: View {
                 onPaste()
             }
         )
+    }
+
+    @ViewBuilder
+    private var leadingItemVisual: some View {
+        if item.contentType == .image, let fileName = item.imageFileName, let image = storage.loadImage(for: fileName) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 20, height: 20)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+        } else {
+            Image(systemName: item.systemImageName)
+                .font(.system(size: 11))
+                .foregroundColor(isSelected ? .accentColor : .secondary)
+        }
     }
 }
 

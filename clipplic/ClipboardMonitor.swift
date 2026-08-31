@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CryptoKit
 import Foundation
 
 public final class ClipboardMonitor {
@@ -12,9 +13,9 @@ public final class ClipboardMonitor {
     private let pasteboard = NSPasteboard.general
     private var ignoredChangeCounts = Set<Int>()
 
-    public var onItemCopied: ((ClipboardItem) -> Void)?
+    public var onItemCopied: ((ClipboardItem, Data?) -> Void)?
 
-    // Known sensitive / transient pasteboard types
+    // Sensitive / Transient pasteboard types to ignore
     private static let sensitivePasteboardTypes: [NSPasteboard.PasteboardType] = [
         .init("org.nspasteboard.ConcealedType"),
         .init("org.nspasteboard.TransientType"),
@@ -44,7 +45,6 @@ public final class ClipboardMonitor {
     }
 
     public func markNextChangeAsIgnored() {
-        // Will ignore the change count immediately following our write
         ignoredChangeCounts.insert(pasteboard.changeCount + 1)
     }
 
@@ -61,43 +61,119 @@ public final class ClipboardMonitor {
 
         // Privacy Check: Skip concealed or password manager data
         if let types = pasteboard.types {
-            let containsSensitiveType = types.contains { pasteboardType in
+            let containsSensitive = types.contains { pasteboardType in
                 Self.sensitivePasteboardTypes.contains(pasteboardType)
             }
-            if containsSensitiveType {
+            if containsSensitive {
                 return
             }
-        }
-
-        // Extract text
-        guard let rawString = pasteboard.string(forType: .string) else {
-            return
-        }
-
-        let trimmed = rawString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return
         }
 
         let frontmost = NSWorkspace.shared.frontmostApplication
         let appName = frontmost?.localizedName
         let bundleID = frontmost?.bundleIdentifier
+        let itemId = UUID()
 
-        let rtfData = pasteboard.data(forType: .rtf)
-        let type = detectContentType(for: rawString)
+        // 1. Check for Copied Files (Finder)
+        if let filePaths = extractFilePaths(), !filePaths.isEmpty {
+            let contentHash = "files:" + filePaths.sorted().joined(separator: "|")
+            let item = ClipboardItem(
+                id: itemId,
+                contentType: .file,
+                textContent: filePaths.joined(separator: "\n"),
+                filePaths: filePaths,
+                createdAt: Date(),
+                isPinned: false,
+                sourceAppName: appName ?? "Finder",
+                sourceAppBundleID: bundleID,
+                contentHash: contentHash
+            )
+            onItemCopied?(item, nil)
+            return
+        }
 
-        let item = ClipboardItem(
-            id: UUID(),
-            contentType: type,
-            textContent: rawString,
-            rtfData: rtfData,
-            createdAt: Date(),
-            isPinned: false,
-            sourceAppName: appName,
-            sourceAppBundleID: bundleID
-        )
+        // 2. Check for Copied Images (PNG / TIFF / Screenshots)
+        if let (pngData, size) = extractImageData() {
+            let hashString = "img:" + SHA256.hash(data: pngData).compactMap { String(format: "%02x", $0) }.joined()
+            let fileName = "\(itemId.uuidString).png"
+            let item = ClipboardItem(
+                id: itemId,
+                contentType: .image,
+                textContent: nil,
+                imageFileName: fileName,
+                imageWidth: Double(size.width),
+                imageHeight: Double(size.height),
+                imageByteSize: pngData.count,
+                filePaths: nil,
+                createdAt: Date(),
+                isPinned: false,
+                sourceAppName: appName,
+                sourceAppBundleID: bundleID,
+                contentHash: hashString
+            )
+            onItemCopied?(item, pngData)
+            return
+        }
 
-        onItemCopied?(item)
+        // 3. Check for Plain Text / Code / URLs
+        if let rawString = pasteboard.string(forType: .string) {
+            let trimmed = rawString.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+
+            let rtfData = pasteboard.data(forType: .rtf)
+            let type = detectContentType(for: rawString)
+            let contentHash = "text:" + rawString
+
+            let item = ClipboardItem(
+                id: itemId,
+                contentType: type,
+                textContent: rawString,
+                rtfData: rtfData,
+                createdAt: Date(),
+                isPinned: false,
+                sourceAppName: appName,
+                sourceAppBundleID: bundleID,
+                contentHash: contentHash
+            )
+            onItemCopied?(item, nil)
+        }
+    }
+
+    private func extractFilePaths() -> [String]? {
+        // Method A: readObjects for NSURL
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            let paths = urls.filter { $0.isFileURL }.map { $0.path }
+            if !paths.isEmpty {
+                return paths
+            }
+        }
+
+        // Method B: NSFilenamesPboardType
+        if let filenames = pasteboard.propertyList(forType: .init("NSFilenamesPboardType")) as? [String], !filenames.isEmpty {
+            return filenames
+        }
+
+        return nil
+    }
+
+    private func extractImageData() -> (Data, CGSize)? {
+        // Direct PNG
+        if let pngData = pasteboard.data(forType: .png) {
+            if let image = NSImage(data: pngData) {
+                return (pngData, image.size)
+            }
+        }
+
+        // TIFF conversion to PNG
+        if let tiffData = pasteboard.data(forType: .tiff) {
+            if let imageRep = NSBitmapImageRep(data: tiffData),
+               let pngData = imageRep.representation(using: .png, properties: [:]) {
+                let size = CGSize(width: imageRep.pixelsWide, height: imageRep.pixelsHigh)
+                return (pngData, size)
+            }
+        }
+
+        return nil
     }
 
     private func detectContentType(for string: String) -> ItemContentType {
