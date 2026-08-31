@@ -45,6 +45,9 @@ public final class ClipboardMonitor {
     }
 
     public func markNextChangeAsIgnored() {
+        if ignoredChangeCounts.count > 20 {
+            ignoredChangeCounts.removeAll()
+        }
         ignoredChangeCounts.insert(pasteboard.changeCount + 1)
     }
 

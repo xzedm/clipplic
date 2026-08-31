@@ -6,6 +6,40 @@
 import AppKit
 import SwiftUI
 
+// MARK: - High-Performance In-Memory App Icon Cache
+final class AppIconCache: @unchecked Sendable {
+    static let shared = AppIconCache()
+    private let cache = NSCache<NSString, NSImage>()
+
+    private init() {
+        cache.countLimit = 120
+    }
+
+    func icon(bundleID: String?, appName: String?) -> NSImage? {
+        let key = (bundleID ?? appName ?? "") as NSString
+        guard key.length > 0 else { return nil }
+
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+
+        var image: NSImage?
+        if let bundleID = bundleID,
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            image = NSWorkspace.shared.icon(forFile: appURL.path)
+        } else if let appName = appName {
+            if let running = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == appName }) {
+                image = running.icon
+            }
+        }
+
+        if let image = image {
+            cache.setObject(image, forKey: key)
+        }
+        return image
+    }
+}
+
 // MARK: - Native macOS App Icon View
 struct AppIconView: View {
     let bundleID: String?
@@ -13,7 +47,7 @@ struct AppIconView: View {
     var size: CGFloat = 18
 
     var body: some View {
-        if let icon = resolvedAppIcon {
+        if let icon = AppIconCache.shared.icon(bundleID: bundleID, appName: appName) {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
@@ -31,21 +65,6 @@ struct AppIconView: View {
                 .foregroundColor(.secondary)
                 .frame(width: size, height: size)
         }
-    }
-
-    private var resolvedAppIcon: NSImage? {
-        if let bundleID = bundleID,
-           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            return NSWorkspace.shared.icon(forFile: appURL.path)
-        }
-
-        if let appName = appName {
-            if let running = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == appName }) {
-                return running.icon
-            }
-        }
-
-        return nil
     }
 }
 

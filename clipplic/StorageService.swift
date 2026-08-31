@@ -13,7 +13,7 @@ public final class StorageService {
     private let fileURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
-
+    private let imageMemoryCache = NSCache<NSString, NSImage>()
     public init(folderName: String = "clipplic", fileName: String = "history.json") {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -29,6 +29,9 @@ public final class StorageService {
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
         self.decoder = dec
+
+        imageMemoryCache.countLimit = 80
+        imageMemoryCache.totalCostLimit = 50 * 1024 * 1024 // 50MB RAM cap
 
         ensureDirectoriesExist()
     }
@@ -71,6 +74,7 @@ public final class StorageService {
     }
 
     public func clear() {
+        imageMemoryCache.removeAllObjects()
         try? FileManager.default.removeItem(at: fileURL)
         try? FileManager.default.removeItem(at: imagesDirectoryURL)
         ensureDirectoriesExist()
@@ -95,12 +99,23 @@ public final class StorageService {
     }
 
     public func loadImage(for fileName: String) -> NSImage? {
+        let key = fileName as NSString
+        if let cached = imageMemoryCache.object(forKey: key) {
+            return cached
+        }
+
         let url = imageURL(for: fileName)
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return NSImage(contentsOf: url)
+        guard FileManager.default.fileExists(atPath: url.path),
+              let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+
+        imageMemoryCache.setObject(image, forKey: key)
+        return image
     }
 
     public func deleteImage(for fileName: String) {
+        imageMemoryCache.removeObject(forKey: fileName as NSString)
         let url = imageURL(for: fileName)
         try? FileManager.default.removeItem(at: url)
     }
