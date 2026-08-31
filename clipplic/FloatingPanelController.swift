@@ -30,7 +30,7 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    public func setup<Content: View>(rootView: Content, width: CGFloat = 600, height: CGFloat = 460) {
+    public func setup<Content: View>(rootView: Content, width: CGFloat = 750, height: CGFloat = 520) {
         if panel != nil { return }
 
         let customPanel = FloatingPanel(
@@ -45,7 +45,7 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         customPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         customPanel.titleVisibility = .hidden
         customPanel.titlebarAppearsTransparent = true
-        customPanel.isMovableByWindowBackground = true
+        customPanel.isMovableByWindowBackground = false
         customPanel.isReleasedWhenClosed = false
         customPanel.backgroundColor = .clear
         customPanel.isOpaque = false
@@ -53,6 +53,8 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         customPanel.delegate = self
 
         let hostingView = NSHostingView(rootView: rootView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         hostingView.autoresizingMask = [.width, .height]
         customPanel.contentView = hostingView
 
@@ -60,7 +62,7 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     public func toggle() {
-        if isVisible {
+        if panel?.isVisible == true {
             hide()
         } else {
             show()
@@ -71,15 +73,15 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         guard let panel = panel else { return }
 
         positionCenterUpper(panel)
+        panel.invalidateShadow()
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        isVisible = true
+        NSApp.activate()
 
         startMonitoringOutsideClicks()
     }
 
     public func hide() {
-        guard let panel = panel, isVisible else { return }
+        guard let panel = panel else { return }
         stopMonitoringOutsideClicks()
         panel.orderOut(nil)
         isVisible = false

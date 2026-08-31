@@ -25,6 +25,7 @@ struct ContentView: View {
                 .padding(.bottom, 8)
 
             Divider()
+                .opacity(0.25)
 
             // MARK: - Content List
             if manager.filteredItems.isEmpty {
@@ -35,14 +36,15 @@ struct ContentView: View {
             }
 
             Divider()
+                .opacity(0.25)
 
             // MARK: - Footer
             footerSection
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
         }
-        .frame(width: 400, height: 530)
-        .background(VisualEffectBackground().ignoresSafeArea())
+        .frame(width: 410, height: 530)
+        .background(PopoverGlassBackground().ignoresSafeArea())
         .onAppear {
             isSearchFocused = true
         }
@@ -52,8 +54,8 @@ struct ContentView: View {
     private var headerSection: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(isSearchFocused ? .accentColor : .secondary)
+                .font(.system(size: 13, weight: .semibold))
 
             TextField("Search text, links, images, files...", text: Bindable(manager).searchText)
                 .textFieldStyle(.plain)
@@ -73,11 +75,14 @@ struct ContentView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(
+                    isSearchFocused ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.18),
+                    lineWidth: 1
+                )
         )
     }
 
@@ -85,23 +90,35 @@ struct ContentView: View {
     private var filterSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                FilterChip(title: "All", isSelected: manager.selectedTypeFilter == nil) {
-                    manager.selectedTypeFilter = nil
+                FilterChip(title: "All", count: manager.items.count, isSelected: manager.selectedTypeFilter == nil) {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.selectedTypeFilter = nil
+                    }
                 }
-                FilterChip(title: "Images", systemImage: "photo", isSelected: manager.selectedTypeFilter == .image) {
-                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .image) ? nil : .image
+                FilterChip(title: "Images", systemImage: "photo", count: manager.imagesCount, isSelected: manager.selectedTypeFilter == .image) {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.selectedTypeFilter = (manager.selectedTypeFilter == .image) ? nil : .image
+                    }
                 }
-                FilterChip(title: "Files", systemImage: "folder", isSelected: manager.selectedTypeFilter == .file) {
-                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .file) ? nil : .file
+                FilterChip(title: "Files", systemImage: "folder", count: manager.filesCount, isSelected: manager.selectedTypeFilter == .file) {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.selectedTypeFilter = (manager.selectedTypeFilter == .file) ? nil : .file
+                    }
                 }
                 FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
-                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
+                    }
                 }
                 FilterChip(title: "Links", systemImage: "link", isSelected: manager.selectedTypeFilter == .url) {
-                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
+                    }
                 }
                 FilterChip(title: "Code", systemImage: "chevron.left.forwardslash.chevron.right", isSelected: manager.selectedTypeFilter == .code) {
-                    manager.selectedTypeFilter = (manager.selectedTypeFilter == .code) ? nil : .code
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.selectedTypeFilter = (manager.selectedTypeFilter == .code) ? nil : .code
+                    }
                 }
             }
         }
@@ -149,7 +166,7 @@ struct ContentView: View {
         VStack(spacing: 12) {
             Image(systemName: manager.searchText.isEmpty ? "clipboard" : "magnifyingglass")
                 .font(.system(size: 34, weight: .light))
-                .foregroundColor(.secondary.opacity(0.6))
+                .foregroundColor(.secondary.opacity(0.5))
 
             if manager.searchText.isEmpty {
                 Text("Clipboard is empty")
@@ -176,12 +193,13 @@ struct ContentView: View {
             Button {
                 manager.toggleMonitoring()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(manager.isMonitoring ? Color.green : Color.orange)
-                        .frame(width: 6, height: 6)
+                        .frame(width: 6.5, height: 6.5)
+                        .shadow(color: manager.isMonitoring ? Color.green.opacity(0.4) : Color.clear, radius: 2)
                     Text(manager.isMonitoring ? "Monitoring" : "Paused")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11.5, weight: .medium))
                         .foregroundColor(.secondary)
                 }
             }
@@ -196,10 +214,14 @@ struct ContentView: View {
 
             Menu {
                 Button("Clear Unpinned Items") {
-                    manager.clearHistory(includingPinned: false)
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.clearHistory(includingPinned: false)
+                    }
                 }
                 Button("Clear All History", role: .destructive) {
-                    manager.clearHistory(includingPinned: true)
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        manager.clearHistory(includingPinned: true)
+                    }
                 }
                 Divider()
                 Button("Settings...") {
@@ -212,7 +234,7 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 13))
+                    .font(.system(size: 13.5))
                     .foregroundColor(.secondary)
             }
             .menuStyle(.borderlessButton)
@@ -231,7 +253,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Row View
+// MARK: - Row View with App Icons & High-Res Thumbnails
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let storage: StorageService
@@ -244,7 +266,7 @@ struct ClipboardItemRow: View {
     var body: some View {
         Button(action: onCopy) {
             HStack(alignment: .center, spacing: 10) {
-                // High-visibility thumbnail or visual badge
+                // Leading High-Visibility Thumbnail
                 leadingVisualBadge
 
                 // Text Content & Metadata
@@ -257,37 +279,39 @@ struct ClipboardItemRow: View {
 
                     if let secondary = item.secondaryPreview {
                         Text(secondary)
-                            .font(.system(size: 11))
+                            .font(.system(size: 10.5))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
 
-                    // Metadata footer
-                    HStack(spacing: 6) {
+                    // Metadata footer with App Icon
+                    HStack(spacing: 5) {
+                        AppIconView(bundleID: item.sourceAppBundleID, appName: item.sourceAppName, size: 12)
+
+                        if let appName = item.sourceAppName {
+                            Text(appName)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.85))
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary.opacity(0.4))
+                        }
+
                         Text(formattedTime(item.createdAt))
                             .font(.system(size: 10))
                             .foregroundColor(.secondary.opacity(0.8))
 
-                        if let appName = item.sourceAppName {
-                            Text("•")
-                                .font(.system(size: 8))
-                                .foregroundColor(.secondary.opacity(0.5))
-                            Text(appName)
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary.opacity(0.8))
-                        }
-
                         if item.contentType == .image, let size = item.imageByteSize {
                             Text("•")
                                 .font(.system(size: 8))
-                                .foregroundColor(.secondary.opacity(0.5))
+                                .foregroundColor(.secondary.opacity(0.4))
                             Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary.opacity(0.7))
                         } else if item.characterCount > 0 {
                             Text("•")
                                 .font(.system(size: 8))
-                                .foregroundColor(.secondary.opacity(0.5))
+                                .foregroundColor(.secondary.opacity(0.4))
                             Text("\(item.characterCount) chars")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary.opacity(0.6))
@@ -300,18 +324,18 @@ struct ClipboardItemRow: View {
                 // Action Controls
                 HStack(spacing: 4) {
                     if isRecentlyCopied {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.green)
                             Text("Copied")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(.green)
                         }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.15))
-                        .cornerRadius(4)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .background(Color.green.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     } else if item.isPinned || isHovered {
                         Button(action: onTogglePin) {
                             Image(systemName: item.isPinned ? "pin.fill" : "pin")
@@ -338,7 +362,7 @@ struct ClipboardItemRow: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
             )
             .contentShape(Rectangle())
@@ -377,24 +401,24 @@ struct ClipboardItemRow: View {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 36, height: 26)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .frame(width: 38, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .stroke(Color.secondary.opacity(0.25), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
                 )
-                .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+                .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
         } else if item.contentType == .file, let files = item.filePaths, let first = files.first {
             Image(nsImage: NSWorkspace.shared.icon(forFile: first))
                 .resizable()
                 .frame(width: 26, height: 26)
         } else {
             Image(systemName: item.systemImageName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundColor(iconColor)
                 .frame(width: 26, height: 26)
                 .background(iconColor.opacity(0.12))
-                .cornerRadius(5)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
     }
 
@@ -426,38 +450,39 @@ struct ClipboardItemRow: View {
 struct FilterChip: View {
     let title: String
     var systemImage: String? = nil
+    var count: Int? = nil
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 4.5) {
                 if let systemImage = systemImage {
                     Image(systemName: systemImage)
                         .font(.system(size: 9.5))
                 }
                 Text(title)
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+
+                if let count = count, count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.15))
+                        .clipShape(Capsule())
+                }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(isSelected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.08))
             .foregroundColor(isSelected ? .accentColor : .primary)
-            .cornerRadius(5)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 0.75)
+            )
         }
         .buttonStyle(.plain)
     }
-}
-
-// MARK: - Visual Effect View for macOS frosted glass look
-struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
