@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import QuickLook
 
 struct FloatingHUDView: View {
     @Environment(ClipboardManager.self) private var manager
@@ -12,6 +11,8 @@ struct FloatingHUDView: View {
     @State private var isShowingQuickLook: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
     @State private var localKeyMonitor: Any? = nil
+    @State private var hoveredItemId: UUID? = nil
+    @State private var showingClearConfirmation: Bool = false
 
     private var items: [ClipboardItem] {
         manager.filteredItems
@@ -27,14 +28,19 @@ struct FloatingHUDView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                // MARK: - Search Header
+                // MARK: - Search Header & Controls
                 searchHeaderView
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
+                    .padding(.bottom, 8)
+
+                // MARK: - Filter Pills
+                filterSection
+                    .padding(.horizontal, 16)
                     .padding(.bottom, 10)
 
                 Divider()
-                    .opacity(0.4)
+                    .opacity(0.3)
 
                 // MARK: - Main Dual-Pane Content
                 if items.isEmpty {
@@ -44,7 +50,7 @@ struct FloatingHUDView: View {
                     HStack(spacing: 0) {
                         // Left list (46% width)
                         itemListPane
-                            .frame(width: 320)
+                            .frame(width: 330)
 
                         Divider()
                             .opacity(0.3)
@@ -56,14 +62,14 @@ struct FloatingHUDView: View {
                 }
 
                 Divider()
-                    .opacity(0.4)
+                    .opacity(0.3)
 
-                // MARK: - Shortcuts Footer Bar
-                footerShortcutsBar
-                    .padding(.horizontal, 16)
+                // MARK: - Interactive Action Buttons Footer Bar
+                interactiveFooterBar
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 8)
             }
-            .frame(width: 720, height: 490)
+            .frame(width: 740, height: 510)
             .background(HUDVisualEffectView().ignoresSafeArea())
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
@@ -77,6 +83,16 @@ struct FloatingHUDView: View {
                 quickLookModal(for: item)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
+        }
+        .confirmationDialog(
+            "Clear unpinned items from history?",
+            isPresented: $showingClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Unpinned History", role: .destructive) {
+                manager.clearHistory(includingPinned: false)
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .onAppear {
             isSearchFieldFocused = true
@@ -102,11 +118,11 @@ struct FloatingHUDView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 15, weight: .medium))
 
             TextField("Search history, screenshots, files, links, code...", text: Bindable(manager).searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15))
+                .font(.system(size: 14.5))
                 .focused($isSearchFieldFocused)
 
             if !manager.searchText.isEmpty {
@@ -120,13 +136,70 @@ struct FloatingHUDView: View {
                 .buttonStyle(.plain)
             }
 
-            Text("ESC to close")
-                .font(.system(size: 10.5, weight: .medium))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.15))
-                .cornerRadius(4)
-                .foregroundColor(.secondary)
+            // Quick Settings Button
+            Button {
+                openSettings()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 26, height: 26)
+                    .background(Color.secondary.opacity(0.12))
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Open Settings (⌘,)")
+
+            // Close Button
+            Button {
+                FloatingPanelController.shared.hide()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 26, height: 26)
+                    .background(Color.secondary.opacity(0.12))
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Close (Esc)")
+        }
+    }
+
+    // MARK: - Filter Section
+    private var filterSection: some View {
+        HStack(spacing: 6) {
+            FilterChip(title: "All", isSelected: manager.selectedTypeFilter == nil) {
+                manager.selectedTypeFilter = nil
+            }
+            FilterChip(title: "Images", systemImage: "photo", isSelected: manager.selectedTypeFilter == .image) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .image) ? nil : .image
+            }
+            FilterChip(title: "Files", systemImage: "folder", isSelected: manager.selectedTypeFilter == .file) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .file) ? nil : .file
+            }
+            FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
+            }
+            FilterChip(title: "Links", systemImage: "link", isSelected: manager.selectedTypeFilter == .url) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
+            }
+            FilterChip(title: "Code", systemImage: "chevron.left.forwardslash.chevron.right", isSelected: manager.selectedTypeFilter == .code) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .code) ? nil : .code
+            }
+
+            Spacer()
+
+            if manager.pinnedCount > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                    Text("\(manager.pinnedCount) pinned")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+            }
         }
     }
 
@@ -141,6 +214,7 @@ struct FloatingHUDView: View {
                             storage: manager.storage,
                             index: index,
                             isSelected: selectedItem?.id == item.id,
+                            isHovered: hoveredItemId == item.id,
                             onSelect: {
                                 selectedItemId = item.id
                             },
@@ -152,9 +226,22 @@ struct FloatingHUDView: View {
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                                     isShowingQuickLook = true
                                 }
+                            },
+                            onTogglePin: {
+                                manager.togglePin(item)
+                            },
+                            onDelete: {
+                                manager.deleteItem(item)
                             }
                         )
                         .id(item.id)
+                        .onHover { isHovering in
+                            if isHovering {
+                                hoveredItemId = item.id
+                            } else if hoveredItemId == item.id {
+                                hoveredItemId = nil
+                            }
+                        }
                     }
                 }
                 .padding(8)
@@ -242,7 +329,7 @@ struct FloatingHUDView: View {
                         Image(nsImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity, maxHeight: 240)
+                            .frame(maxWidth: .infinity, maxHeight: 220)
                             .background(Color.black.opacity(0.2))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(
@@ -260,7 +347,7 @@ struct FloatingHUDView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "eye.fill")
                                     .font(.system(size: 10))
-                                Text("Space to Zoom")
+                                Text("Click to Zoom (Space)")
                                     .font(.system(size: 10, weight: .medium))
                             }
                             .padding(.horizontal, 8)
@@ -274,7 +361,7 @@ struct FloatingHUDView: View {
                     }
 
                     // Metadata Pill Badges
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         if let w = item.imageWidth, let h = item.imageHeight {
                             Label("\(Int(w)) × \(Int(h)) px", systemImage: "aspectratio")
                                 .font(.system(size: 11, weight: .medium))
@@ -388,7 +475,6 @@ struct FloatingHUDView: View {
 
             Spacer()
 
-            // Quick Actions based on type
             if item.contentType == .image, let fileName = item.imageFileName {
                 Button {
                     let url = manager.storage.imageURL(for: fileName)
@@ -426,15 +512,29 @@ struct FloatingHUDView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
 
+    // MARK: - Interactive Action Buttons Footer Bar
+    private var interactiveFooterBar: some View {
+        HStack(spacing: 8) {
+            // 1. Primary Paste Button
             Button {
-                pasteItem(item)
+                if let item = selectedItem {
+                    pasteItem(item)
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.turn.down.left")
                         .font(.system(size: 10, weight: .bold))
                     Text("Paste")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11.5, weight: .semibold))
+                    Text("↵")
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color.white.opacity(0.2))
+                        .cornerRadius(3)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -443,6 +543,129 @@ struct FloatingHUDView: View {
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .disabled(selectedItem == nil)
+
+            // 2. Quick Look Button
+            Button {
+                if selectedItem != nil {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        isShowingQuickLook.toggle()
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 10.5))
+                    Text("Preview")
+                        .font(.system(size: 11))
+                    Text("Space")
+                        .font(.system(size: 8.5, weight: .medium))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15))
+                        .cornerRadius(3)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedItem == nil)
+
+            // 3. Pin / Unpin Button
+            Button {
+                if let item = selectedItem {
+                    manager.togglePin(item)
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: (selectedItem?.isPinned ?? false) ? "pin.fill" : "pin")
+                        .font(.system(size: 10.5))
+                        .foregroundColor((selectedItem?.isPinned ?? false) ? .orange : .primary)
+                    Text((selectedItem?.isPinned ?? false) ? "Unpin" : "Pin")
+                        .font(.system(size: 11))
+                    Text("⌘P")
+                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15))
+                        .cornerRadius(3)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedItem == nil)
+
+            // 4. Delete Button
+            Button {
+                if let item = selectedItem {
+                    manager.deleteItem(item)
+                    if let first = items.first {
+                        selectedItemId = first.id
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10.5))
+                    Text("Delete")
+                        .font(.system(size: 11))
+                    Text("⌘⌫")
+                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15))
+                        .cornerRadius(3)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedItem == nil)
+
+            Spacer()
+
+            // 5. Settings Button
+            Button {
+                openSettings()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 10.5))
+                    Text("Settings")
+                        .font(.system(size: 11))
+                    Text("⌘,")
+                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15))
+                        .cornerRadius(3)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Open Settings (⌘,)")
+
+            // 6. Clear History Button
+            Button {
+                showingClearConfirmation = true
+            } label: {
+                Image(systemName: "trash.circle")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help("Clear Unpinned History")
         }
     }
 
@@ -486,7 +709,7 @@ struct FloatingHUDView: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 620, maxHeight: 360)
+                        .frame(maxWidth: 640, maxHeight: 380)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .shadow(radius: 12)
                 } else if item.contentType == .file, let files = item.filePaths {
@@ -558,7 +781,7 @@ struct FloatingHUDView: View {
                     .stroke(Color.white.opacity(0.2), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.5), radius: 30, x: 0, y: 15)
-            .frame(maxWidth: 660, maxHeight: 440)
+            .frame(maxWidth: 680, maxHeight: 460)
         }
     }
 
@@ -574,27 +797,14 @@ struct FloatingHUDView: View {
         }
     }
 
-    // MARK: - Footer Shortcuts Bar
-    private var footerShortcutsBar: some View {
-        HStack(spacing: 10) {
-            ShortcutHint(key: "↵", label: "Paste")
-            ShortcutHint(key: "Space", label: "Quick Look")
-            ShortcutHint(key: "⌘1..9", label: "Quick Paste")
-            ShortcutHint(key: "⌘P", label: "Pin")
-            ShortcutHint(key: "⌘⌫", label: "Delete")
-            ShortcutHint(key: "⌘,", label: "Settings")
-
-            Spacer()
-
-            Text("\(items.count) items")
-                .font(.system(size: 10.5))
-                .foregroundColor(.secondary.opacity(0.7))
-        }
-    }
-
     // MARK: - Helpers & Actions
     private func pasteItem(_ item: ClipboardItem) {
         PasteService.shared.restoreAndPaste(item: item, manager: manager, autoPaste: true)
+    }
+
+    private func openSettings() {
+        FloatingPanelController.shared.hide()
+        SettingsWindowController.shared.show()
     }
 
     private func selectNext() {
@@ -620,7 +830,7 @@ struct FloatingHUDView: View {
     private func startLocalKeyboardMonitoring() {
         stopLocalKeyboardMonitoring()
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Escape: if Quick Look is open, close Quick Look; else close HUD
+            // Escape
             if event.keyCode == 53 {
                 if isShowingQuickLook {
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
@@ -635,7 +845,6 @@ struct FloatingHUDView: View {
 
             // Spacebar (keyCode 49): Toggle Quick Look
             if event.keyCode == 49 {
-                // If search text field is focused and not empty, don't hijack unless user pressed Option or Shift
                 if !isSearchFieldFocused || manager.searchText.isEmpty {
                     if selectedItem != nil {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
@@ -699,8 +908,7 @@ struct FloatingHUDView: View {
             }
             // Command + Comma (⌘, Open Settings)
             if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "," {
-                FloatingPanelController.shared.hide()
-                SettingsWindowController.shared.show()
+                openSettings()
                 return nil
             }
 
@@ -723,19 +931,22 @@ struct FloatingHUDView: View {
     }
 }
 
-// MARK: - HUD Item Row with High-Res Thumbnail
+// MARK: - HUD Item Row with High-Res Thumbnail and Hover Actions
 struct HUDItemRow: View {
     let item: ClipboardItem
     let storage: StorageService
     let index: Int
     let isSelected: Bool
+    let isHovered: Bool
     let onSelect: () -> Void
     let onPaste: () -> Void
     let onQuickLook: () -> Void
+    let onTogglePin: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 // Quick shortcut indicator (1..9)
                 if index < 9 {
                     Text("\(index + 1)")
@@ -767,7 +978,43 @@ struct HUDItemRow: View {
 
                 Spacer(minLength: 4)
 
-                if item.isPinned {
+                // Actions on hover or pin badge
+                if isHovered {
+                    HStack(spacing: 3) {
+                        Button(action: onQuickLook) {
+                            Image(systemName: "eye")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .frame(width: 18, height: 18)
+                                .background(Color.secondary.opacity(0.12))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Preview (Space)")
+
+                        Button(action: onTogglePin) {
+                            Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                                .font(.system(size: 10))
+                                .foregroundColor(item.isPinned ? .orange : .secondary)
+                                .frame(width: 18, height: 18)
+                                .background(Color.secondary.opacity(0.12))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .help(item.isPinned ? "Unpin" : "Pin (⌘P)")
+
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .frame(width: 18, height: 18)
+                                .background(Color.secondary.opacity(0.12))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Delete (⌘⌫)")
+                    }
+                } else if item.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.system(size: 9))
                         .foregroundColor(.orange)
@@ -777,7 +1024,7 @@ struct HUDItemRow: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+                    .fill(isSelected ? Color.accentColor.opacity(0.18) : (isHovered ? Color.primary.opacity(0.05) : Color.clear))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -799,6 +1046,9 @@ struct HUDItemRow: View {
                 onQuickLook()
             }
             Divider()
+            Button(item.isPinned ? "Unpin (⌘P)" : "Pin to Top (⌘P)") {
+                onTogglePin()
+            }
             if item.contentType == .image, let fileName = item.imageFileName {
                 Button("Open in Preview") {
                     let url = storage.imageURL(for: fileName)
@@ -810,6 +1060,10 @@ struct HUDItemRow: View {
                     let urls = files.map { URL(fileURLWithPath: $0) }
                     NSWorkspace.shared.activateFileViewerSelecting(urls)
                 }
+            }
+            Divider()
+            Button("Delete (⌘⌫)", role: .destructive) {
+                onDelete()
             }
         }
     }
@@ -838,27 +1092,6 @@ struct HUDItemRow: View {
                 .frame(width: 24, height: 24)
                 .background(Color.secondary.opacity(0.1))
                 .cornerRadius(5)
-        }
-    }
-}
-
-// MARK: - Shortcut Hint Pill
-struct ShortcutHint: View {
-    let key: String
-    let label: String
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Text(key)
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.15))
-                .cornerRadius(3)
-                .foregroundColor(.primary)
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
         }
     }
 }
