@@ -2,16 +2,35 @@
 //  clipplicApp.swift
 //  clipplic
 //
-//  Created by Abduzhalil Yeshim on 31.08.2026.
-//
 
 import SwiftUI
 
 @main
 struct clipplicApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
-        WindowGroup {
+        MenuBarExtra("clipplic", systemImage: "clipboard") {
             ContentView()
+                .environment(ClipboardManager.shared)
+        }
+        .menuBarExtraStyle(.window)
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // 1. Setup Floating Spotlight HUD with the shared manager
+        FloatingPanelController.shared.setup(
+            rootView: FloatingHUDView()
+                .environment(ClipboardManager.shared)
+        )
+
+        // 2. Register Global Hotkey (⌘⇧V)
+        HotkeyManager.shared.register {
+            PasteService.shared.recordFrontmostApp()
+            FloatingPanelController.shared.toggle()
         }
     }
 }

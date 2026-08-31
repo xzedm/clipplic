@@ -2,23 +2,414 @@
 //  ContentView.swift
 //  clipplic
 //
-//  Created by Abduzhalil Yeshim on 31.08.2026.
-//
 
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(ClipboardManager.self) private var manager
+    @State private var hoveredItemId: UUID? = nil
+    @State private var copiedFeedbackId: UUID? = nil
+    @FocusState private var isSearchFocused: Bool
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        VStack(spacing: 0) {
+            // MARK: - Header & Search
+            headerSection
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            // MARK: - Filter Pills
+            filterSection
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+
+            Divider()
+
+            // MARK: - Content List
+            if manager.filteredItems.isEmpty {
+                emptyStateView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                itemsListView
+            }
+
+            Divider()
+
+            // MARK: - Footer
+            footerSection
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+        }
+        .frame(width: 380, height: 500)
+        .background(VisualEffectBackground().ignoresSafeArea())
+        .onAppear {
+            isSearchFocused = true
+        }
+    }
+
+    // MARK: - Header
+    private var headerSection: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+                .font(.system(size: 13, weight: .medium))
+
+            TextField("Search history or apps...", text: Bindable(manager).searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($isSearchFocused)
+
+            if !manager.searchText.isEmpty {
+                Button {
+                    manager.searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Filters
+    private var filterSection: some View {
+        HStack(spacing: 6) {
+            FilterChip(title: "All", isSelected: manager.selectedTypeFilter == nil) {
+                manager.selectedTypeFilter = nil
+            }
+            FilterChip(title: "Links", systemImage: "link", isSelected: manager.selectedTypeFilter == .url) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .url) ? nil : .url
+            }
+            FilterChip(title: "Code", systemImage: "chevron.left.forwardslash.chevron.right", isSelected: manager.selectedTypeFilter == .code) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .code) ? nil : .code
+            }
+            FilterChip(title: "Text", systemImage: "doc.text", isSelected: manager.selectedTypeFilter == .text) {
+                manager.selectedTypeFilter = (manager.selectedTypeFilter == .text) ? nil : .text
+            }
+
+            Spacer()
+
+            if manager.pinnedCount > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                    Text("\(manager.pinnedCount)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: - Items List
+    private var itemsListView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 4) {
+                    ForEach(manager.filteredItems) { item in
+                        ClipboardItemRow(
+                            item: item,
+                            isHovered: hoveredItemId == item.id,
+                            isRecentlyCopied: copiedFeedbackId == item.id,
+                            onCopy: {
+                                performCopy(item)
+                            },
+                            onTogglePin: {
+                                manager.togglePin(item)
+                            },
+                            onDelete: {
+                                manager.deleteItem(item)
+                            }
+                        )
+                        .id(item.id)
+                        .onHover { isHovering in
+                            if isHovering {
+                                hoveredItemId = item.id
+                            } else if hoveredItemId == item.id {
+                                hoveredItemId = nil
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    // MARK: - Empty State
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: manager.searchText.isEmpty ? "clipboard" : "magnifyingglass")
+                .font(.system(size: 34, weight: .light))
+                .foregroundColor(.secondary.opacity(0.6))
+
+            if manager.searchText.isEmpty {
+                Text("Clipboard is empty")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text("Copy text or links anywhere on your Mac")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary.opacity(0.7))
+            } else {
+                Text("No matching items")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text("Try searching with different keywords")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
         }
         .padding()
     }
+
+    // MARK: - Footer
+    private var footerSection: some View {
+        HStack(spacing: 8) {
+            Button {
+                manager.toggleMonitoring()
+            } label: {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(manager.isMonitoring ? Color.green : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text(manager.isMonitoring ? "Monitoring" : "Paused")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .help(manager.isMonitoring ? "Click to pause clipboard monitoring" : "Click to resume clipboard monitoring")
+
+            Spacer()
+
+            Text("\(manager.items.count) items")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary.opacity(0.7))
+
+            Menu {
+                Button("Clear Unpinned Items") {
+                    manager.clearHistory(includingPinned: false)
+                }
+                Button("Clear All History", role: .destructive) {
+                    manager.clearHistory(includingPinned: true)
+                }
+                Divider()
+                Button("Quit Clipplic") {
+                    NSApplication.shared.terminate(nil)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+    }
+
+    private func performCopy(_ item: ClipboardItem) {
+        manager.copyToClipboard(item)
+        copiedFeedbackId = item.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            if copiedFeedbackId == item.id {
+                copiedFeedbackId = nil
+            }
+        }
+    }
 }
 
-#Preview {
-    ContentView()
+// MARK: - Row View
+struct ClipboardItemRow: View {
+    let item: ClipboardItem
+    let isHovered: Bool
+    let isRecentlyCopied: Bool
+    let onCopy: () -> Void
+    let onTogglePin: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        Button(action: onCopy) {
+            HStack(alignment: .top, spacing: 10) {
+                // Type Icon Badge
+                Image(systemName: item.systemImageName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(iconColor)
+                    .frame(width: 22, height: 22)
+                    .background(iconColor.opacity(0.12))
+                    .cornerRadius(5)
+
+                // Text Content & Metadata
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.previewTitle)
+                        .font(.system(size: 12.5, weight: .regular))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    if let secondary = item.secondaryPreview {
+                        Text(secondary)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    // Metadata footer
+                    HStack(spacing: 6) {
+                        Text(formattedTime(item.createdAt))
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary.opacity(0.8))
+
+                        if let appName = item.sourceAppName {
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text(appName)
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary.opacity(0.8))
+                        }
+
+                        if item.characterCount > 0 {
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text("\(item.characterCount) chars")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary.opacity(0.6))
+                        }
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                // Action Controls
+                HStack(spacing: 4) {
+                    if isRecentlyCopied {
+                        HStack(spacing: 2) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.green)
+                            Text("Copied")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.green)
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.15))
+                        .cornerRadius(4)
+                    } else if item.isPinned || isHovered {
+                        Button(action: onTogglePin) {
+                            Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                                .font(.system(size: 11))
+                                .foregroundColor(item.isPinned ? .orange : .secondary)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help(item.isPinned ? "Unpin item" : "Pin item to top")
+                    }
+
+                    if isHovered && !isRecentlyCopied {
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Delete item")
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Copy to Clipboard") {
+                onCopy()
+            }
+            Button(item.isPinned ? "Unpin" : "Pin to Top") {
+                onTogglePin()
+            }
+            Divider()
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        }
+    }
+
+    private var iconColor: Color {
+        switch item.contentType {
+        case .url:
+            return .blue
+        case .code:
+            return .purple
+        case .rtf:
+            return .orange
+        case .text:
+            return .secondary
+        }
+    }
+
+    private func formattedTime(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Filter Chip
+struct FilterChip: View {
+    let title: String
+    var systemImage: String? = nil
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let systemImage = systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9.5))
+                }
+                Text(title)
+                    .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(isSelected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+            .foregroundColor(isSelected ? .accentColor : .primary)
+            .cornerRadius(5)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Visual Effect View for macOS frosted glass look
+struct VisualEffectBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
