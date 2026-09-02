@@ -14,6 +14,7 @@ public final class StorageService {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let imageMemoryCache = NSCache<NSString, NSImage>()
+    private var lastOrphanCleanup: Date = .distantPast
     public init(folderName: String = "clipplic", fileName: String = "history.json") {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -50,13 +51,18 @@ public final class StorageService {
         do {
             let data = try encoder.encode(items)
             try data.write(to: fileURL, options: .atomic)
+            // Restrict file permissions to owner-only read/write
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
         } catch {
             print("[StorageService] Failed to save history: \(error.localizedDescription)")
         }
 
-        // Clean up unreferenced images periodically
-        let referencedImages = Set(items.compactMap { $0.imageFileName })
-        cleanupOrphanedImages(activeImageFileNames: referencedImages)
+        // Clean up orphaned images at most once per 5 minutes
+        if Date().timeIntervalSince(lastOrphanCleanup) > 300 {
+            lastOrphanCleanup = Date()
+            let referencedImages = Set(items.compactMap { $0.imageFileName })
+            cleanupOrphanedImages(activeImageFileNames: referencedImages)
+        }
     }
 
     public func load() -> [ClipboardItem] {

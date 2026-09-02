@@ -34,6 +34,12 @@ public final class PasteService {
 
         guard shouldAutoPaste, let targetApp = previousApp else { return }
 
+        // Verify accessibility permission before attempting to simulate paste
+        guard Self.isAccessibilityPermissionGranted else {
+            Self.requestAccessibilityPermission()
+            return
+        }
+
         // 3. Reactivate target application
         targetApp.activate()
 

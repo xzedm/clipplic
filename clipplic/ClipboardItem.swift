@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import CryptoKit
 
 public enum ItemContentType: String, Codable, Sendable, CaseIterable {
     case text
@@ -26,6 +27,7 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
     public let filePaths: [String]?
     public let createdAt: Date
     public var isPinned: Bool
+    public var isSensitive: Bool
     public let sourceAppName: String?
     public let sourceAppBundleID: String?
     public let contentHash: String
@@ -42,6 +44,7 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
         filePaths: [String]? = nil,
         createdAt: Date = Date(),
         isPinned: Bool = false,
+        isSensitive: Bool = false,
         sourceAppName: String? = nil,
         sourceAppBundleID: String? = nil,
         contentHash: String? = nil
@@ -57,19 +60,20 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
         self.filePaths = filePaths
         self.createdAt = createdAt
         self.isPinned = isPinned
+        self.isSensitive = isSensitive
         self.sourceAppName = sourceAppName
         self.sourceAppBundleID = sourceAppBundleID
 
         if let hash = contentHash {
             self.contentHash = hash
         } else {
-            // Compute default hash
             if let text = textContent {
-                self.contentHash = "text:\(text)"
+                // Fallback: hash text content with SHA256 to avoid storing raw text as hash
+                self.contentHash = "text:" + SHA256.hash(data: Data(text.utf8)).compactMap { String(format: "%02x", $0) }.joined()
             } else if let img = imageFileName {
                 self.contentHash = "img:\(img)"
             } else if let files = filePaths {
-                self.contentHash = "files:\(files.joined(separator: "|"))"
+                self.contentHash = "files:\(files.sorted().joined(separator: "|"))"
             } else {
                 self.contentHash = id.uuidString
             }
@@ -77,6 +81,10 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
     }
 
     public var previewTitle: String {
+        if isSensitive {
+            return "•••••••••••• (Sensitive / Password)"
+        }
+
         switch contentType {
         case .image:
             if let w = imageWidth, let h = imageHeight {
@@ -118,6 +126,10 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
     }
 
     public var secondaryPreview: String? {
+        if isSensitive {
+            return "Password or concealed token"
+        }
+
         switch contentType {
         case .image:
             var details: [String] = []
@@ -157,6 +169,10 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
     }
 
     public var systemImageName: String {
+        if isSensitive {
+            return "lock.fill"
+        }
+
         switch contentType {
         case .image:
             return "photo"

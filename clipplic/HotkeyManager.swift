@@ -13,16 +13,18 @@ public final class HotkeyManager {
     private var eventHandlerRef: EventHandlerRef?
     private var hotKeyRef: EventHotKeyRef?
     private var onHotkeyPressed: (() -> Void)?
+    public private(set) var activeShortcut: HotkeyShortcut = HotkeyShortcut.defaultShortcut
 
     private init() {}
 
     public func register(
-        keyCode: UInt32 = UInt32(kVK_ANSI_V),
-        modifiers: UInt32 = UInt32(cmdKey | shiftKey),
+        shortcut: HotkeyShortcut? = nil,
         action: @escaping () -> Void
     ) {
+        let targetShortcut = shortcut ?? PreferencesService.shared.shortcut
         unregister()
         self.onHotkeyPressed = action
+        self.activeShortcut = targetShortcut
 
         // 1. Install Carbon event handler for HotKey Pressed
         var eventType = EventTypeSpec(
@@ -64,11 +66,11 @@ public final class HotkeyManager {
             return
         }
 
-        // 2. Register specific hotkey (⌘⇧V)
+        // 2. Register specific hotkey
         let hotKeyID = EventHotKeyID(signature: 0x434C4950 /* 'CLIP' */, id: 1)
         let registerStatus = RegisterEventHotKey(
-            keyCode,
-            modifiers,
+            targetShortcut.keyCode,
+            targetShortcut.modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
@@ -76,10 +78,15 @@ public final class HotkeyManager {
         )
 
         if registerStatus != noErr {
-            print("[HotkeyManager] Failed to register hotkey: \(registerStatus)")
+            print("[HotkeyManager] Failed to register hotkey \(targetShortcut.displayString): \(registerStatus)")
         } else {
-            print("[HotkeyManager] Registered global hotkey ⌘⇧V successfully")
+            print("[HotkeyManager] Registered global hotkey [\(targetShortcut.displayString)] successfully")
         }
+    }
+
+    public func updateShortcut(_ shortcut: HotkeyShortcut) {
+        guard let action = onHotkeyPressed else { return }
+        register(shortcut: shortcut, action: action)
     }
 
     public func unregister() {
@@ -94,12 +101,12 @@ public final class HotkeyManager {
     }
 
     deinit {
-        // Safe cleanup if instance is deallocated
-        if let hotKeyRef = hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
+        // Note: deinit may run off-MainActor; Carbon APIs are thread-safe for cleanup.
+        if let ref = hotKeyRef {
+            UnregisterEventHotKey(ref)
         }
-        if let eventHandlerRef = eventHandlerRef {
-            RemoveEventHandler(eventHandlerRef)
+        if let ref = eventHandlerRef {
+            RemoveEventHandler(ref)
         }
     }
 }

@@ -70,28 +70,12 @@ struct FloatingHUDView: View {
                     .padding(.vertical, 8)
             }
             .frame(width: 750, height: 520)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-                }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.08)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.4), radius: 32, x: 0, y: 16)
-
             // MARK: - Quick Look Lightbox Modal Overlay
             if isShowingQuickLook, let item = selectedItem {
                 quickLookModal(for: item)
@@ -443,29 +427,23 @@ struct FloatingHUDView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(files, id: \.self) { path in
+                                let fileURL = URL(fileURLWithPath: path)
                                 HStack(spacing: 10) {
                                     Image(nsImage: NSWorkspace.shared.icon(forFile: path))
                                         .resizable()
                                         .frame(width: 24, height: 24)
 
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(URL(fileURLWithPath: path).lastPathComponent)
+                                        Text(fileURL.lastPathComponent)
                                             .font(.system(size: 12, weight: .medium))
                                             .foregroundColor(.primary)
-                                        Text(URL(fileURLWithPath: path).deletingLastPathComponent().path)
+                                        Text(fileURL.deletingLastPathComponent().path)
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                             .lineLimit(1)
                                     }
 
                                     Spacer()
-
-                                    if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-                                       let size = attrs[.size] as? Int64 {
-                                        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundColor(.secondary)
-                                    }
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)

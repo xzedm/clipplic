@@ -6,7 +6,7 @@
 import AppKit
 import CryptoKit
 import Foundation
-
+@MainActor
 public final class ClipboardMonitor {
     private var timer: Timer?
     private var lastChangeCount: Int
@@ -34,7 +34,9 @@ public final class ClipboardMonitor {
         stop()
         lastChangeCount = pasteboard.changeCount
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.poll()
+            MainActor.assumeIsolated {
+                self?.poll()
+            }
         }
         RunLoop.main.add(timer!, forMode: .common)
     }
@@ -44,11 +46,11 @@ public final class ClipboardMonitor {
         timer = nil
     }
 
-    public func markNextChangeAsIgnored() {
+    public func ignoreCurrentChangeCount() {
         if ignoredChangeCounts.count > 20 {
             ignoredChangeCounts.removeAll()
         }
-        ignoredChangeCounts.insert(pasteboard.changeCount + 1)
+        ignoredChangeCounts.insert(pasteboard.changeCount)
     }
 
     private func poll() {
@@ -66,23 +68,28 @@ public final class ClipboardMonitor {
         let appName = frontmost?.localizedName
         let bundleID = frontmost?.bundleIdentifier
 
-        // Privacy Check 1: Ignored Application check
+        // Privacy Check 1: Ignored Application check (user custom blacklist)
         if PreferencesService.shared.isAppIgnored(bundleID: bundleID) {
             return
         }
 
-        // Privacy Check 2: Skip concealed or password manager data
-        if PreferencesService.shared.filterPasswordManagers, let types = pasteboard.types {
-            let containsSensitive = types.contains { pasteboardType in
+        // Detect if content is sensitive / password manager data
+        var isSensitiveContent = false
+        if let types = pasteboard.types {
+            isSensitiveContent = types.contains { pasteboardType in
                 Self.sensitivePasteboardTypes.contains(pasteboardType)
             }
-            if containsSensitive {
-                return
-            }
+        }
+        if !isSensitiveContent, PreferencesService.shared.isPasswordManager(bundleID: bundleID) {
+            isSensitiveContent = true
+        }
+
+        // Privacy Check 2: Skip sensitive data if filtering is active
+        if PreferencesService.shared.filterPasswordManagers && isSensitiveContent {
+            return
         }
 
         let itemId = UUID()
-
         // 1. Check for Copied Image Data (Screenshots, browser images, Photoshop)
         if let (pngData, size) = extractImageData() {
             let hashString = "img:" + SHA256.hash(data: pngData).compactMap { String(format: "%02x", $0) }.joined()
@@ -158,7 +165,7 @@ public final class ClipboardMonitor {
 
             let rtfData = pasteboard.data(forType: .rtf)
             let type = detectContentType(for: rawString)
-            let contentHash = "text:" + rawString
+            let contentHash = "text:" + SHA256.hash(data: Data(rawString.utf8)).compactMap { String(format: "%02x", $0) }.joined()
 
             let item = ClipboardItem(
                 id: itemId,
@@ -167,6 +174,7 @@ public final class ClipboardMonitor {
                 rtfData: rtfData,
                 createdAt: Date(),
                 isPinned: false,
+                isSensitive: isSensitiveContent,
                 sourceAppName: appName,
                 sourceAppBundleID: bundleID,
                 contentHash: contentHash

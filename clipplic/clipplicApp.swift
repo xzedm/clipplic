@@ -10,9 +10,11 @@ struct clipplicApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("clipplic", systemImage: "clipboard") {
+        MenuBarExtra {
             ContentView()
                 .environment(ClipboardManager.shared)
+        } label: {
+            Image("MenuBarIcon")
         }
         .menuBarExtraStyle(.window)
 

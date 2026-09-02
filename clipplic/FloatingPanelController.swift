@@ -76,6 +76,7 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         panel.invalidateShadow()
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        isVisible = true
 
         startMonitoringOutsideClicks()
     }

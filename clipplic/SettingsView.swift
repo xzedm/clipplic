@@ -106,15 +106,15 @@ struct SettingsView: View {
             GroupBox(label: Label("Global Shortcut", systemImage: "keyboard")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Open Clipboard History HUD:")
-                            .font(.system(size: 13))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Open Clipboard History HUD:")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Click to record a new global shortcut")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
                         Spacer()
-                        Text("⌘ Shift V")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.15))
-                            .cornerRadius(6)
+                        ShortcutRecorderView()
                     }
 
                     Toggle("Auto-paste on Enter", isOn: $prefs.autoPasteOnEnter)
@@ -153,20 +153,42 @@ struct SettingsView: View {
     // MARK: - Privacy Tab
     private var privacyTabContent: some View {
         VStack(alignment: .leading, spacing: 18) {
-            // Password Manager Exclusions
-            GroupBox(label: Label("Sensitive Data Protection", systemImage: "lock.shield")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle("Filter Password Managers & Concealed Tokens", isOn: $prefs.filterPasswordManagers)
+            // Password & Credential Capture
+            GroupBox(label: Label("Passwords & Sensitive Credentials", systemImage: "key.fill")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Filter Passwords & Password Managers (Recommended)", isOn: $prefs.filterPasswordManagers)
                         .toggleStyle(.checkbox)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, weight: .medium))
 
-                    Text("Automatically skips 1Password, Bitwarden, Keychain, and sensitive clipboard payloads marked as concealed or transient.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                    if prefs.filterPasswordManagers {
+                        Text("✓ 1Password, Bitwarden, Keychain, KeePassXC, and concealed tokens are automatically blocked from history.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.orange)
+                                Text("Password capture is enabled. Passwords and credentials copied to the clipboard will be recorded in your local history.")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.orange)
+                            }
+
+                            Divider()
+                                .opacity(0.3)
+
+                            Toggle("Mask sensitive passwords in history list (••••••••••••)", isOn: $prefs.maskPasswordsInList)
+                                .toggleStyle(.checkbox)
+                                .font(.system(size: 12))
+                        }
+                        .padding(10)
+                        .background(Color.orange.opacity(0.12))
+                        .cornerRadius(8)
+                    }
                 }
                 .padding(6)
             }
-
             // Ignored Applications
             GroupBox(label: Label("Ignored Applications", systemImage: "app.badge.xmark")) {
                 VStack(alignment: .leading, spacing: 10) {

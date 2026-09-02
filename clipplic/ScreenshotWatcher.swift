@@ -43,11 +43,10 @@ public final class ScreenshotWatcher {
             self?.checkForNewScreenshots()
         }
 
-        source.setCancelHandler { [weak self] in
-            guard let self = self else { return }
-            if self.fileDescriptor >= 0 {
-                close(self.fileDescriptor)
-                self.fileDescriptor = -1
+        let fd = fileDescriptor
+        source.setCancelHandler {
+            if fd >= 0 {
+                close(fd)
             }
         }
 
@@ -60,6 +59,7 @@ public final class ScreenshotWatcher {
         guard isWatching else { return }
         directorySource?.cancel()
         directorySource = nil
+        fileDescriptor = -1
         isWatching = false
     }
 
@@ -84,6 +84,10 @@ public final class ScreenshotWatcher {
         for file in files where isScreenshotFilename(file) {
             knownScreenshotPaths.insert(folderURL.appendingPathComponent(file).path)
         }
+        // Cap the set to prevent unbounded growth
+        if knownScreenshotPaths.count > 500 {
+            knownScreenshotPaths.removeAll()
+        }
     }
 
     private func checkForNewScreenshots() {
@@ -95,19 +99,32 @@ public final class ScreenshotWatcher {
             if !knownScreenshotPaths.contains(filePath) {
                 knownScreenshotPaths.insert(filePath)
 
-                // Wait 150ms for macOS to finish writing the file to disk
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                    self?.processNewScreenshot(at: filePath)
+                // Wait for macOS to finish writing the file, then verify stability
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.processNewScreenshotIfStable(at: filePath, attempt: 1)
                 }
             }
         }
     }
 
-    private func processNewScreenshot(at path: String) {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+    private func processNewScreenshotIfStable(at path: String, attempt: Int) {
+        let fileURL = URL(fileURLWithPath: path)
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attrs[.size] as? Int64, size > 0,
+              let data = try? Data(contentsOf: fileURL),
               let image = NSImage(data: data) else {
+            // Retry up to 3 times with increasing delay
+            if attempt < 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(attempt) * 0.3) { [weak self] in
+                    self?.processNewScreenshotIfStable(at: path, attempt: attempt + 1)
+                }
+            }
             return
         }
+        processScreenshotData(data, image: image, path: path)
+    }
+
+    private func processScreenshotData(_ data: Data, image: NSImage, path: String) {
 
         let itemId = UUID()
         let fileName = "\(itemId.uuidString).png"

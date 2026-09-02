@@ -20,7 +20,18 @@ public final class PreferencesService {
     private let kHistoryLimit = "clipplic_history_limit"
     private let kRetentionDays = "clipplic_retention_days"
     private let kFilterPasswordManagers = "clipplic_filter_password_managers"
+    private let kMaskPasswordsInList = "clipplic_mask_passwords_in_list"
     private let kAutoPasteOnEnter = "clipplic_auto_paste_on_enter"
+    private let kHotkeyKeyCode = "clipplic_hotkey_key_code"
+    private let kHotkeyModifiers = "clipplic_hotkey_modifiers"
+    public static let knownPasswordManagerBundleIDs: [String] = [
+        "com.agilebits.onepassword",
+        "com.agilebits.onepassword7",
+        "com.1password.1password",
+        "com.bitwarden.desktop",
+        "org.keepassxc.keepassxc",
+        "com.apple.keychainaccess"
+    ]
 
     public var ignoredBundleIDs: [String] {
         didSet {
@@ -46,11 +57,25 @@ public final class PreferencesService {
         }
     }
 
+    public var maskPasswordsInList: Bool {
+        didSet {
+            defaults.set(maskPasswordsInList, forKey: kMaskPasswordsInList)
+        }
+    }
+
     public var autoPasteOnEnter: Bool {
         didSet {
             defaults.set(autoPasteOnEnter, forKey: kAutoPasteOnEnter)
         }
     }
+    public var shortcut: HotkeyShortcut {
+        didSet {
+            defaults.set(shortcut.keyCode, forKey: kHotkeyKeyCode)
+            defaults.set(shortcut.modifiers, forKey: kHotkeyModifiers)
+            HotkeyManager.shared.updateShortcut(shortcut)
+        }
+    }
+
 
     public var isLaunchAtLoginEnabled: Bool {
         get {
@@ -62,28 +87,18 @@ public final class PreferencesService {
     }
 
     private init() {
-        // Default sensitive app identifiers
-        let defaultIgnored = [
-            "com.agilebits.onepassword",
-            "com.agilebits.onepassword7",
-            "com.1password.1password",
-            "com.bitwarden.desktop",
-            "org.keepassxc.keepassxc",
-            "com.apple.keychainaccess"
-        ]
-
         if let saved = defaults.stringArray(forKey: kIgnoredBundleIDs) {
             self.ignoredBundleIDs = saved
         } else {
-            self.ignoredBundleIDs = defaultIgnored
-            defaults.set(defaultIgnored, forKey: kIgnoredBundleIDs)
+            self.ignoredBundleIDs = []
+            defaults.set([], forKey: kIgnoredBundleIDs)
         }
 
         let savedLimit = defaults.integer(forKey: kHistoryLimit)
         self.historyLimit = (savedLimit > 0) ? savedLimit : 500
 
         let savedRetention = defaults.integer(forKey: kRetentionDays)
-        self.retentionDays = (savedRetention != 0) ? savedRetention : 30
+        self.retentionDays = (savedRetention > 0) ? savedRetention : 30
 
         if defaults.object(forKey: kFilterPasswordManagers) != nil {
             self.filterPasswordManagers = defaults.bool(forKey: kFilterPasswordManagers)
@@ -91,16 +106,47 @@ public final class PreferencesService {
             self.filterPasswordManagers = true
         }
 
+        if defaults.object(forKey: kMaskPasswordsInList) != nil {
+            self.maskPasswordsInList = defaults.bool(forKey: kMaskPasswordsInList)
+        } else {
+            self.maskPasswordsInList = true
+        }
+
         if defaults.object(forKey: kAutoPasteOnEnter) != nil {
             self.autoPasteOnEnter = defaults.bool(forKey: kAutoPasteOnEnter)
         } else {
             self.autoPasteOnEnter = true
         }
+        let savedKeyCode = UInt32(defaults.integer(forKey: kHotkeyKeyCode))
+        let savedModifiers = UInt32(defaults.integer(forKey: kHotkeyModifiers))
+        if savedKeyCode != 0 && savedModifiers != 0 {
+            self.shortcut = HotkeyShortcut(keyCode: savedKeyCode, modifiers: savedModifiers)
+        } else {
+            self.shortcut = HotkeyShortcut.defaultShortcut
+        }
     }
 
     public func isAppIgnored(bundleID: String?) -> Bool {
         guard let id = bundleID?.lowercased() else { return false }
-        return ignoredBundleIDs.contains { $0.lowercased() == id }
+
+        // 1. User custom ignored apps are always blocked
+        if ignoredBundleIDs.contains(where: { $0.lowercased() == id }) {
+            return true
+        }
+
+        // 2. Password managers blocked only if filterPasswordManagers is true
+        if filterPasswordManagers {
+            if Self.knownPasswordManagerBundleIDs.contains(where: { $0.lowercased() == id }) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    public func isPasswordManager(bundleID: String?) -> Bool {
+        guard let id = bundleID?.lowercased() else { return false }
+        return Self.knownPasswordManagerBundleIDs.contains { $0.lowercased() == id }
     }
 
     public func addIgnoredApp(bundleID: String) {

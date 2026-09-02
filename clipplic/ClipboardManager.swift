@@ -20,6 +20,7 @@ public final class ClipboardManager {
 
     private let monitor: ClipboardMonitor
     public let storage: StorageService
+    private var saveTask: Task<Void, Never>?
 
     public init() {
         let defaultStorage = StorageService()
@@ -60,6 +61,10 @@ public final class ClipboardManager {
     public var filteredItems: [ClipboardItem] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        if query.isEmpty && selectedTypeFilter == nil {
+            return items
+        }
+
         return items.filter { item in
             // Filter by content type if selected
             if let selectedType = selectedTypeFilter, item.contentType != selectedType {
@@ -68,23 +73,19 @@ public final class ClipboardManager {
 
             // Filter by search query
             if !query.isEmpty {
-                let matchesContent = item.textContent?.localizedCaseInsensitiveContains(query) ?? false
-                let matchesPreview = item.previewTitle.localizedCaseInsensitiveContains(query)
-                let matchesSource = item.sourceAppName?.localizedCaseInsensitiveContains(query) ?? false
-                let matchesFiles = item.filePaths?.contains { $0.localizedCaseInsensitiveContains(query) } ?? false
-
-                if !matchesContent && !matchesPreview && !matchesSource && !matchesFiles {
-                    return false
+                if let text = item.textContent, text.localizedCaseInsensitiveContains(query) {
+                    return true
                 }
+                if let app = item.sourceAppName, app.localizedCaseInsensitiveContains(query) {
+                    return true
+                }
+                if let files = item.filePaths, files.contains(where: { $0.localizedCaseInsensitiveContains(query) }) {
+                    return true
+                }
+                return false
             }
 
             return true
-        }.sorted { (lhs, rhs) -> Bool in
-            // Pinned items stay at top, then newest first
-            if lhs.isPinned != rhs.isPinned {
-                return lhs.isPinned && !rhs.isPinned
-            }
-            return lhs.createdAt > rhs.createdAt
         }
     }
 
@@ -122,6 +123,7 @@ public final class ClipboardManager {
                 filePaths: newItem.filePaths ?? existingItem.filePaths,
                 createdAt: Date(),
                 isPinned: existingItem.isPinned,
+                isSensitive: newItem.isSensitive || existingItem.isSensitive,
                 sourceAppName: newItem.sourceAppName ?? existingItem.sourceAppName,
                 sourceAppBundleID: newItem.sourceAppBundleID ?? existingItem.sourceAppBundleID,
                 contentHash: newItem.contentHash
@@ -132,12 +134,10 @@ public final class ClipboardManager {
         }
 
         enforceHistoryLimit()
-        storage.save(items: items)
+        scheduleSave()
     }
 
     public func copyToClipboard(_ item: ClipboardItem) {
-        monitor.markNextChangeAsIgnored()
-
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
@@ -154,13 +154,18 @@ public final class ClipboardManager {
             }
 
         case .text, .code, .url, .rtf:
+            let pasteboardItem = NSPasteboardItem()
             if let rtf = item.rtfData {
-                pasteboard.setData(rtf, forType: .rtf)
+                pasteboardItem.setData(rtf, forType: .rtf)
             }
             if let text = item.textContent {
-                pasteboard.setString(text, forType: .string)
+                pasteboardItem.setString(text, forType: .string)
             }
+            pasteboard.writeObjects([pasteboardItem])
         }
+
+        // Tell monitor to ignore our own pasteboard write
+        monitor.ignoreCurrentChangeCount()
 
         // Move the item to top as recently used
         if let index = items.firstIndex(where: { $0.id == item.id }) {
@@ -182,7 +187,7 @@ public final class ClipboardManager {
                 contentHash: existing.contentHash
             )
             items.insert(refreshed, at: 0)
-            storage.save(items: items)
+            scheduleSave()
         }
     }
 
@@ -261,5 +266,14 @@ public final class ClipboardManager {
         }
 
         items = (pinned + trimmedUnpinned).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(0.5))
+            guard !Task.isCancelled, let self else { return }
+            self.storage.save(items: self.items)
+        }
     }
 }
