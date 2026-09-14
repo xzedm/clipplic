@@ -79,7 +79,7 @@ struct SettingsView: View {
                 .padding(20)
             }
         }
-        .frame(width: 520, height: 440)
+        .frame(width: 520, height: 500)
         .onAppear {
             refreshCacheSize()
         }
@@ -122,6 +122,31 @@ struct SettingsView: View {
                         .font(.system(size: 13))
 
                     Text("When enabled, pressing Enter automatically pastes the selected item directly into your active window.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(6)
+            }
+
+            // Fast Screenshot Paste (⌘V)
+            GroupBox(label: Label("Screenshots & Fast Paste", systemImage: "camera.viewfinder")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Auto-copy screenshots to clipboard (Fast ⌘V)", isOn: $prefs.autoCopyScreenshots)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 13, weight: .medium))
+
+                    Text("When enabled, screenshots captured with ⌘⇧3 or ⌘⇧4 are automatically copied to your clipboard so you can paste them instantly with ⌘V without opening the HUD.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Divider()
+                        .opacity(0.4)
+
+                    Toggle("Instant capture (Disable floating thumbnail delay)", isOn: $prefs.instantScreenshots)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 13))
+
+                    Text("Bypasses macOS 4-second floating thumbnail delay so screenshots write to disk and clipboard immediately.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

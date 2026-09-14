@@ -24,6 +24,8 @@ public final class PreferencesService {
     private let kAutoPasteOnEnter = "clipplic_auto_paste_on_enter"
     private let kHotkeyKeyCode = "clipplic_hotkey_key_code"
     private let kHotkeyModifiers = "clipplic_hotkey_modifiers"
+    private let kAutoCopyScreenshots = "clipplic_auto_copy_screenshots"
+    private let kInstantScreenshots = "clipplic_instant_screenshots"
     public static let knownPasswordManagerBundleIDs: [String] = [
         "com.agilebits.onepassword",
         "com.agilebits.onepassword7",
@@ -68,6 +70,20 @@ public final class PreferencesService {
             defaults.set(autoPasteOnEnter, forKey: kAutoPasteOnEnter)
         }
     }
+
+    public var autoCopyScreenshots: Bool {
+        didSet {
+            defaults.set(autoCopyScreenshots, forKey: kAutoCopyScreenshots)
+        }
+    }
+
+    public var instantScreenshots: Bool {
+        didSet {
+            defaults.set(instantScreenshots, forKey: kInstantScreenshots)
+            applyInstantScreenshots(instantScreenshots)
+        }
+    }
+
     public var shortcut: HotkeyShortcut {
         didSet {
             defaults.set(shortcut.keyCode, forKey: kHotkeyKeyCode)
@@ -117,6 +133,20 @@ public final class PreferencesService {
         } else {
             self.autoPasteOnEnter = true
         }
+
+        if defaults.object(forKey: kAutoCopyScreenshots) != nil {
+            self.autoCopyScreenshots = defaults.bool(forKey: kAutoCopyScreenshots)
+        } else {
+            self.autoCopyScreenshots = true
+        }
+
+        let screencaptureThumbnail = UserDefaults(suiteName: "com.apple.screencapture")?.bool(forKey: "show-thumbnail") ?? true
+        if defaults.object(forKey: kInstantScreenshots) != nil {
+            self.instantScreenshots = defaults.bool(forKey: kInstantScreenshots)
+        } else {
+            self.instantScreenshots = !screencaptureThumbnail
+        }
+
         let savedKeyCode = UInt32(defaults.integer(forKey: kHotkeyKeyCode))
         let savedModifiers = UInt32(defaults.integer(forKey: kHotkeyModifiers))
         if savedKeyCode != 0 && savedModifiers != 0 {
@@ -173,6 +203,17 @@ public final class PreferencesService {
         } catch {
             print("[PreferencesService] Failed to update launch at login: \(error.localizedDescription)")
         }
+    }
+
+    public func applyInstantScreenshots(_ enable: Bool) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        if enable {
+            task.arguments = ["write", "com.apple.screencapture", "show-thumbnail", "-bool", "false"]
+        } else {
+            task.arguments = ["delete", "com.apple.screencapture", "show-thumbnail"]
+        }
+        try? task.run()
     }
 
     public func calculateImageCacheSize() -> Int64 {

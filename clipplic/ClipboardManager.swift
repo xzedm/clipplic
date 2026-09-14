@@ -48,7 +48,11 @@ public final class ClipboardManager {
 
         ScreenshotWatcher.shared.onScreenshotCaptured = { [weak self] newItem, imageData in
             Task { @MainActor [weak self] in
-                self?.handleNewCopiedItem(newItem, imageData: imageData)
+                guard let self else { return }
+                self.handleNewCopiedItem(newItem, imageData: imageData)
+                if PreferencesService.shared.autoCopyScreenshots {
+                    self.copyToClipboard(newItem, updateTimestamp: false)
+                }
             }
         }
 
@@ -137,15 +141,45 @@ public final class ClipboardManager {
         scheduleSave()
     }
 
-    public func copyToClipboard(_ item: ClipboardItem) {
+    public func copyToClipboard(_ item: ClipboardItem, updateTimestamp: Bool = true) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
         switch item.contentType {
         case .image:
-            if let fileName = item.imageFileName, let image = storage.loadImage(for: fileName) {
-                pasteboard.writeObjects([image])
+            let pbItem = NSPasteboardItem()
+
+            // 1. PNG data representation (universal for Web, Slack, Discord, Chrome, Figma, Electron)
+            var pngData: Data? = nil
+            if let fileName = item.imageFileName {
+                let imgURL = storage.imageURL(for: fileName)
+                pngData = try? Data(contentsOf: imgURL)
             }
+            if pngData == nil, let filePath = item.filePaths?.first {
+                pngData = try? Data(contentsOf: URL(fileURLWithPath: filePath))
+            }
+            if let pngData {
+                pbItem.setData(pngData, forType: .png)
+            }
+
+            // 2. TIFF representation (for native AppKit applications)
+            var tiffData: Data? = nil
+            if let fileName = item.imageFileName, let image = storage.loadImage(for: fileName) {
+                tiffData = image.tiffRepresentation
+            } else if let filePath = item.filePaths?.first, let image = NSImage(contentsOfFile: filePath) {
+                tiffData = image.tiffRepresentation
+            }
+            if let tiffData {
+                pbItem.setData(tiffData, forType: .tiff)
+            }
+
+            // 3. File URL representation (for Finder, Telegram, Messages, AirDrop)
+            if let filePath = item.filePaths?.first, FileManager.default.fileExists(atPath: filePath) {
+                let fileURL = URL(fileURLWithPath: filePath)
+                pbItem.setString(fileURL.absoluteString, forType: .fileURL)
+            }
+
+            pasteboard.writeObjects([pbItem])
 
         case .file:
             if let filePaths = item.filePaths {
@@ -167,7 +201,9 @@ public final class ClipboardManager {
         // Tell monitor to ignore our own pasteboard write
         monitor.ignoreCurrentChangeCount()
 
-        // Move the item to top as recently used
+        // Move the item to top as recently used (if requested)
+        guard updateTimestamp else { return }
+
         if let index = items.firstIndex(where: { $0.id == item.id }) {
             let existing = items.remove(at: index)
             let refreshed = ClipboardItem(

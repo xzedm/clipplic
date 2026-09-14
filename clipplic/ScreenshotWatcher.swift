@@ -4,8 +4,10 @@
 //
 
 import AppKit
+import CoreServices
 import CryptoKit
 import Foundation
+import ImageIO
 
 @MainActor
 public final class ScreenshotWatcher {
@@ -81,8 +83,11 @@ public final class ScreenshotWatcher {
     private func populateInitialFiles() {
         let folderURL = screenshotDirectoryURL()
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: folderURL.path) else { return }
-        for file in files where isScreenshotFilename(file) {
-            knownScreenshotPaths.insert(folderURL.appendingPathComponent(file).path)
+        for file in files {
+            let fullPath = folderURL.appendingPathComponent(file).path
+            if isScreenshotFilename(file) || isScreenCapturePath(fullPath) {
+                knownScreenshotPaths.insert(fullPath)
+            }
         }
         // Cap the set to prevent unbounded growth
         if knownScreenshotPaths.count > 500 {
@@ -94,15 +99,16 @@ public final class ScreenshotWatcher {
         let folderURL = screenshotDirectoryURL()
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: folderURL.path) else { return }
 
-        for file in files where isScreenshotFilename(file) {
+        for file in files {
             let filePath = folderURL.appendingPathComponent(file).path
-            if !knownScreenshotPaths.contains(filePath) {
-                knownScreenshotPaths.insert(filePath)
+            guard !knownScreenshotPaths.contains(filePath) else { continue }
+            guard isScreenshotFilename(file) || isScreenCapturePath(filePath) else { continue }
 
-                // Wait for macOS to finish writing the file, then verify stability
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    self?.processNewScreenshotIfStable(at: filePath, attempt: 1)
-                }
+            knownScreenshotPaths.insert(filePath)
+
+            // Ultra-low latency: start verifying file readiness in 50ms
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.processNewScreenshotIfStable(at: filePath, attempt: 1)
             }
         }
     }
@@ -112,10 +118,12 @@ public final class ScreenshotWatcher {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let size = attrs[.size] as? Int64, size > 0,
               let data = try? Data(contentsOf: fileURL),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetStatus(source) == .statusComplete,
               let image = NSImage(data: data) else {
-            // Retry up to 3 times with increasing delay
-            if attempt < 3 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(attempt) * 0.3) { [weak self] in
+            // Progressive retry up to 5 times (100ms, 200ms, 300ms, 400ms, 500ms)
+            if attempt < 6 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(attempt) * 0.1) { [weak self] in
                     self?.processNewScreenshotIfStable(at: path, attempt: attempt + 1)
                 }
             }
@@ -125,7 +133,6 @@ public final class ScreenshotWatcher {
     }
 
     private func processScreenshotData(_ data: Data, image: NSImage, path: String) {
-
         let itemId = UUID()
         let fileName = "\(itemId.uuidString).png"
         let hashString = "img:" + SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
@@ -154,13 +161,50 @@ public final class ScreenshotWatcher {
         let isImage = lower.hasSuffix(".png") || lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") || lower.hasSuffix(".heic")
         guard isImage else { return false }
 
+        // Check custom screenshot name prefix configured by user in screencapture defaults
+        if let customName = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "name")?.lowercased(),
+           !customName.isEmpty, lower.hasPrefix(customName) {
+            return true
+        }
+
         // Common macOS screenshot naming conventions across languages
-        return lower.hasPrefix("screenshot") ||
-               lower.hasPrefix("screen shot") ||
-               lower.hasPrefix("снимок экрана") ||
-               lower.hasPrefix("capture d’écran") ||
-               lower.hasPrefix("bildschirmfoto") ||
-               lower.hasPrefix("skjermbilde") ||
-               lower.hasPrefix("captura de pantalla")
+        let prefixes = [
+            "screenshot", "screen shot",
+            "снимок экрана",
+            "capture d’écran", "capture d'écran",
+            "bildschirmfoto",
+            "skjermbilde", "skärmavbild",
+            "captura de pantalla",
+            "schermafbeelding", "schermopname",
+            "istantanea",
+            "zrzut ekranu",
+            "snimka zaslona",
+            "ekran görüntüsü", "ekran resmi",
+            "skjermdump",
+            "kuvakaappaus",
+            "截屏", "屏幕快照",
+            "スクリーンショット",
+            "스크린샷"
+        ]
+
+        return prefixes.contains { lower.hasPrefix($0) }
+    }
+
+    private func isScreenCapturePath(_ path: String) -> Bool {
+        let lower = path.lowercased()
+        let isImage = lower.hasSuffix(".png") || lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") || lower.hasSuffix(".heic")
+        guard isImage else { return false }
+
+        // Spotlight metadata check for native macOS screencapture tags
+        let fileURL = URL(fileURLWithPath: path)
+        if let mdItem = MDItemCreateWithURL(kCFAllocatorDefault, fileURL as CFURL) {
+            if let isCapture = MDItemCopyAttribute(mdItem, "kMDItemIsScreenCapture" as CFString) as? Bool, isCapture {
+                return true
+            }
+            if let isCaptureNum = MDItemCopyAttribute(mdItem, "kMDItemIsScreenCapture" as CFString) as? NSNumber, isCaptureNum.boolValue {
+                return true
+            }
+        }
+        return false
     }
 }

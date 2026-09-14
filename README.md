@@ -35,6 +35,7 @@
 ### 3. 🖼️ Screenshots & Rich Media Support
 * **Full Image Support:** Captures PNG, TIFF, and clipboard image data.
 * **Automated Screenshot Watcher:** Automatically detects and captures screenshots created with `⌘⇧3` and `⌘⇧4` into your history without needing to manually copy them.
+* **Fast Screenshot Paste (Instant `⌘V`):** Newly captured screenshots are automatically copied to the system clipboard in universal formats (`public.png`, `public.tiff`, and file URL). You can immediately press **`⌘V`** in Telegram, Slack, Discord, Chrome, Figma, or Notes to paste the screenshot without touching `⌘⇧V`.
 * **Aspect-Fit Thumbnails:** Crisp $40 \times 30\text{pt}$ card thumbnails in the list and a dark-velvet staging viewer in the detail pane.
 
 ### 4. 👁️ Spacebar Quick Look Lightbox

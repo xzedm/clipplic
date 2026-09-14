@@ -160,6 +160,59 @@ final class ClipplicTestRunner {
         let isPassMgrIgnored = PreferencesService.shared.isPasswordManager(bundleID: "com.agilebits.onepassword")
         assert(isPassMgrIgnored == true, "Sensitive data: Password manager identification")
 
+        // 7. Fast Screenshot Paste Preferences
+        PreferencesService.shared.autoCopyScreenshots = true
+        assert(PreferencesService.shared.autoCopyScreenshots == true, "Fast Screenshot Paste: autoCopyScreenshots preference enabled")
+
+        // 8. Universal Image Pasteboard Writing (.png, .tiff, .fileURL)
+        let storage = createIsolatedStorage()
+        let manager = ClipboardManager(storage: storage)
+        let testRep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 40,
+            pixelsHigh: 40,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 40 * 4,
+            bitsPerPixel: 32
+        )!
+        let pngBytes = testRep.representation(using: .png, properties: [:])!
+        let tempScreenshotPath = NSTemporaryDirectory() + "test_screenshot_\(UUID().uuidString).png"
+        try? pngBytes.write(to: URL(fileURLWithPath: tempScreenshotPath))
+
+        let testScreenshotItem = ClipboardItem(
+            contentType: .image,
+            imageWidth: 40,
+            imageHeight: 40,
+            imageByteSize: pngBytes.count,
+            filePaths: [tempScreenshotPath]
+        )
+        manager.handleNewCopiedItem(testScreenshotItem, imageData: pngBytes)
+        manager.copyToClipboard(testScreenshotItem)
+
+        let pb = NSPasteboard.general
+        let hasPNG = pb.data(forType: .png) != nil
+        let hasTIFF = pb.data(forType: .tiff) != nil
+        let canReadURL = pb.canReadObject(forClasses: [NSURL.self], options: nil)
+        assert(hasPNG && hasTIFF && canReadURL, "Universal Image Pasteboard: Writes PNG, TIFF, and FileURL simultaneously for ⌘V")
+
+        // 9. Screenshot Auto-Copy Integration (Fast ⌘V)
+        var autoCopyFired = false
+        ScreenshotWatcher.shared.onScreenshotCaptured = { item, data in
+            manager.handleNewCopiedItem(item, imageData: data)
+            if PreferencesService.shared.autoCopyScreenshots {
+                manager.copyToClipboard(item, updateTimestamp: false)
+                autoCopyFired = true
+            }
+        }
+        ScreenshotWatcher.shared.onScreenshotCaptured?(testScreenshotItem, pngBytes)
+        assert(autoCopyFired && pb.data(forType: .png) != nil, "Fast Screenshot Auto-Copy: Screenshot immediately ready in NSPasteboard for ⌘V")
+
+        try? FileManager.default.removeItem(atPath: tempScreenshotPath)
+
         print("")
     }
 
