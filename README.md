@@ -65,6 +65,38 @@
 
 ---
 
+## 📦 Installation & macOS Security
+
+### 1. Download & Install
+Download the latest release and drag **`Clipplic.app`** into your `/Applications` folder.
+
+### 2. Allowing the App to Run (Gatekeeper & Security Settings)
+Because Clipplic is an open-source application distributed outside the Mac App Store, macOS may block it on first launch with a warning such as:
+> *"Clipplic cannot be opened because Apple cannot check it for malicious software"* or *"unidentified developer"*.
+
+**To allow Clipplic to open:**
+1. Open **System Settings** ( > **System Settings...**).
+2. Go to **Privacy & Security** in the sidebar.
+3. Scroll down to the **Security** section.
+4. Look for the message: *"Clipplic was blocked from use because it is not from an identified developer"*.
+5. Click **Open Anyway** and confirm with your password or Touch ID.
+6. Click **Open** in the alert dialog.
+
+> [!TIP]
+> **Alternative Quick Open:** Right-click (or `Control`-click) **`Clipplic.app`** in Finder, choose **Open** from the context menu, and click **Open** in the confirmation dialog.
+>
+> **Terminal Bypass:** You can also remove the quarantine flag via Terminal:
+> ```bash
+> xattr -cr /Applications/Clipplic.app
+> ```
+
+### 3. Accessibility Permissions (Required for Auto-Paste)
+To allow Clipplic to automatically paste (`⌘V`) items directly into your active apps:
+1. Open **System Settings > Privacy & Security > Accessibility**.
+2. Ensure **Clipplic** is toggled **ON**.
+
+---
+
 ## ⌨️ Keyboard Shortcuts Reference
 
 | Shortcut | Action | Scope |
