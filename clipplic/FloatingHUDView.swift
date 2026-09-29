@@ -458,7 +458,7 @@ struct FloatingHUDView: View {
         case .text, .code, .url, .rtf:
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(item.textContent ?? "")
+                    Text(previewText(for: item))
                         .font(.system(size: 12.5, design: item.contentType == .code ? .monospaced : .default))
                         .foregroundColor(.primary)
                         .textSelection(.enabled)
@@ -739,7 +739,7 @@ struct FloatingHUDView: View {
                     .padding()
                 } else {
                     ScrollView {
-                        Text(item.textContent ?? "")
+                        Text(previewText(for: item))
                             .font(.system(size: 13, design: item.contentType == .code ? .monospaced : .default))
                             .foregroundColor(.white)
                             .padding()
@@ -915,6 +915,18 @@ struct FloatingHUDView: View {
 
             return event
         }
+    }
+
+    /// Text shown in the detail pane / Quick Look: masks secrets and caps length so
+    /// a multi-megabyte copy can't stall SwiftUI text layout.
+    private func previewText(for item: ClipboardItem) -> String {
+        if item.isSensitive && PreferencesService.shared.maskPasswordsInList {
+            return "••••••••••••  (hidden — paste with ↵)"
+        }
+        let text = item.textContent ?? ""
+        let limit = 20_000
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "\n\n… (\(text.count - limit) more characters — paste to see all)"
     }
 
     private func stopLocalKeyboardMonitoring() {

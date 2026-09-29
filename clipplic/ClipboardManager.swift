@@ -21,6 +21,7 @@ public final class ClipboardManager {
     private let monitor: ClipboardMonitor
     public let storage: StorageService
     private var saveTask: Task<Void, Never>?
+    private var pruneTimer: Timer?
 
     public init() {
         let defaultStorage = StorageService()
@@ -60,6 +61,7 @@ public final class ClipboardManager {
             monitor.start()
             ScreenshotWatcher.shared.start()
         }
+        startPeriodicPruning()
     }
 
     public var filteredItems: [ClipboardItem] {
@@ -106,13 +108,16 @@ public final class ClipboardManager {
     }
 
     public func handleNewCopiedItem(_ newItem: ClipboardItem, imageData: Data?) {
-        // Save image if present
-        if let data = imageData, newItem.contentType == .image {
+        let existingIndex = items.firstIndex(where: { $0.contentHash == newItem.contentHash })
+
+        // Save image only when it isn't already stored (duplicates would leave orphan files on disk)
+        if let data = imageData, newItem.contentType == .image,
+           existingIndex.flatMap({ items[$0].imageFileName }) == nil {
             _ = storage.saveImageData(data, id: newItem.id)
         }
 
         // Deduplicate using contentHash
-        if let existingIndex = items.firstIndex(where: { $0.contentHash == newItem.contentHash }) {
+        if let existingIndex {
             let existingItem = items.remove(at: existingIndex)
 
             let updated = ClipboardItem(
@@ -195,6 +200,10 @@ public final class ClipboardManager {
             if let text = item.textContent {
                 pasteboardItem.setString(text, forType: .string)
             }
+            if item.isSensitive {
+                // Tell other clipboard managers / Universal Clipboard not to record this secret
+                pasteboardItem.setString("", forType: .init("org.nspasteboard.ConcealedType"))
+            }
             pasteboard.writeObjects([pasteboardItem])
         }
 
@@ -218,6 +227,7 @@ public final class ClipboardManager {
                 filePaths: existing.filePaths,
                 createdAt: Date(),
                 isPinned: existing.isPinned,
+                isSensitive: existing.isSensitive,
                 sourceAppName: existing.sourceAppName,
                 sourceAppBundleID: existing.sourceAppBundleID,
                 contentHash: existing.contentHash
@@ -310,6 +320,23 @@ public final class ClipboardManager {
             try? await Task.sleep(for: .seconds(0.5))
             guard !Task.isCancelled, let self else { return }
             self.storage.save(items: self.items)
+        }
+    }
+
+    /// Writes history immediately, cancelling any pending debounced save.
+    public func saveNow() {
+        saveTask?.cancel()
+        saveTask = nil
+        storage.save(items: items)
+    }
+
+    private func startPeriodicPruning() {
+        // Retention was only applied at launch; a menu bar app can run for weeks
+        pruneTimer?.invalidate()
+        pruneTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.pruneExpiredItems()
+            }
         }
     }
 }

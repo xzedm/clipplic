@@ -26,6 +26,12 @@ public final class ClipboardMonitor {
         .init("Pasteboard generator type")
     ]
 
+    // Size caps: everything is kept in memory and in history.json, and processed on the main thread.
+    // Huge copies (log files, raw photos) would otherwise freeze the app and balloon its memory.
+    static let maxImageBytes = 50 * 1024 * 1024
+    static let maxTextBytes = 2 * 1024 * 1024
+    static let maxRTFBytes = 2 * 1024 * 1024
+
     public init() {
         self.lastChangeCount = pasteboard.changeCount
     }
@@ -118,7 +124,9 @@ public final class ClipboardMonitor {
             // Check if it's a single image file copied from Finder
             if filePaths.count == 1, isImageFilePath(filePaths[0]) {
                 let path = filePaths[0]
-                if let fileData = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+                if fileSize <= Self.maxImageBytes,
+                   let fileData = try? Data(contentsOf: URL(fileURLWithPath: path)),
                    let image = NSImage(data: fileData) {
                     let hashString = "img:" + SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
                     let fileName = "\(itemId.uuidString).png"
@@ -161,9 +169,9 @@ public final class ClipboardMonitor {
         // 3. Check for Plain Text / Code / URLs
         if let rawString = pasteboard.string(forType: .string) {
             let trimmed = rawString.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
+            guard !trimmed.isEmpty, rawString.utf8.count <= Self.maxTextBytes else { return }
 
-            let rtfData = pasteboard.data(forType: .rtf)
+            let rtfData = pasteboard.data(forType: .rtf).flatMap { $0.count <= Self.maxRTFBytes ? $0 : nil }
             let type = detectContentType(for: rawString)
             let contentHash = "text:" + SHA256.hash(data: Data(rawString.utf8)).compactMap { String(format: "%02x", $0) }.joined()
 
@@ -203,6 +211,7 @@ public final class ClipboardMonitor {
     private func extractImageData() -> (Data, CGSize)? {
         // 1. Direct PNG data
         if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+            guard pngData.count <= Self.maxImageBytes else { return nil }
             if let image = NSImage(data: pngData) {
                 return (pngData, image.size)
             }
@@ -210,6 +219,8 @@ public final class ClipboardMonitor {
 
         // 2. TIFF conversion to PNG (Native macOS screenshot format)
         if let tiffData = pasteboard.data(forType: .tiff), !tiffData.isEmpty {
+            // Uncompressed TIFF is large; allow more headroom before PNG compression
+            guard tiffData.count <= Self.maxImageBytes * 4 else { return nil }
             if let imageRep = NSBitmapImageRep(data: tiffData),
                let pngData = imageRep.representation(using: .png, properties: [:]) {
                 let size = CGSize(width: imageRep.pixelsWide, height: imageRep.pixelsHigh)

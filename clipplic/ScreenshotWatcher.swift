@@ -83,15 +83,11 @@ public final class ScreenshotWatcher {
     private func populateInitialFiles() {
         let folderURL = screenshotDirectoryURL()
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: folderURL.path) else { return }
+        // Mark every existing file as seen. Do NOT clear this set: if it were emptied, the next
+        // folder event would re-import every old screenshot at once (memory/CPU spike, history flood).
+        // Paths are small strings, so even thousands of entries cost very little.
         for file in files {
-            let fullPath = folderURL.appendingPathComponent(file).path
-            if isScreenshotFilename(file) || isScreenCapturePath(fullPath) {
-                knownScreenshotPaths.insert(fullPath)
-            }
-        }
-        // Cap the set to prevent unbounded growth
-        if knownScreenshotPaths.count > 500 {
-            knownScreenshotPaths.removeAll()
+            knownScreenshotPaths.insert(folderURL.appendingPathComponent(file).path)
         }
     }
 
@@ -102,9 +98,9 @@ public final class ScreenshotWatcher {
         for file in files {
             let filePath = folderURL.appendingPathComponent(file).path
             guard !knownScreenshotPaths.contains(filePath) else { continue }
-            guard isScreenshotFilename(file) || isScreenCapturePath(filePath) else { continue }
-
+            // Record before classifying so non-screenshot files aren't re-queried in Spotlight on every folder event
             knownScreenshotPaths.insert(filePath)
+            guard isScreenshotFilename(file) || isScreenCapturePath(filePath) else { continue }
 
             // Ultra-low latency: start verifying file readiness in 50ms
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in

@@ -23,7 +23,8 @@ public final class StorageService {
         self.fileURL = directoryURL.appendingPathComponent(fileName)
 
         let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        // Compact output: history can hold hundreds of items with RTF payloads
+        enc.outputFormatting = [.sortedKeys]
         enc.dateEncodingStrategy = .iso8601
         self.encoder = enc
 
@@ -38,11 +39,14 @@ public final class StorageService {
     }
 
     private func ensureDirectoriesExist() {
-        if !FileManager.default.fileExists(atPath: directoryURL.path) {
-            try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        }
-        if !FileManager.default.fileExists(atPath: imagesDirectoryURL.path) {
-            try? FileManager.default.createDirectory(at: imagesDirectoryURL, withIntermediateDirectories: true)
+        // Owner-only access: clipboard history and screenshots may contain secrets
+        let ownerOnly: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
+        for url in [directoryURL, imagesDirectoryURL] {
+            if !FileManager.default.fileExists(atPath: url.path) {
+                try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: ownerOnly)
+            } else {
+                try? FileManager.default.setAttributes(ownerOnly, ofItemAtPath: url.path)
+            }
         }
     }
 
@@ -75,6 +79,9 @@ public final class StorageService {
             return items
         } catch {
             print("[StorageService] Failed to load history: \(error.localizedDescription)")
+            // Keep the unreadable file aside; otherwise the next save silently overwrites the whole history
+            let backupURL = fileURL.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
+            try? FileManager.default.moveItem(at: fileURL, to: backupURL)
             return []
         }
     }
