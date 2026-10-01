@@ -115,6 +115,25 @@ To allow Clipplic to automatically paste (`⌘V`) items directly into your activ
 
 ## 🏗️ Architecture & Tech Stack
 
+### Building the installer DMG
+
+Export the Release `.app` from Xcode, then package it on macOS:
+
+```bash
+python3 -m venv build/dmg-tools
+build/dmg-tools/bin/python -m pip install -r packaging/requirements.txt
+build/dmg-tools/bin/python packaging/build_dmg.py /path/to/clipplic.app
+```
+
+The output is `build/Clipplic-<app-version>.dmg`. Use `--output /path/to/new-name.dmg`
+to choose another filename. Existing output files are never overwritten.
+
+Always use this script for release DMGs: it embeds a 560 × 320 Finder window,
+80-point icons, and fixed app/Applications positions in the image's `.DS_Store`.
+The installer artwork includes a drag arrow and Retina resolution. To update it,
+edit `packaging/render_background.swift` and run
+`swift packaging/render_background.swift packaging` before packaging again.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 UI Layer (SwiftUI + AppKit)                 │
