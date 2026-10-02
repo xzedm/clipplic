@@ -11,12 +11,13 @@ struct clipplicApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ContentView()
+            MenuBarControlsView()
                 .environment(ClipboardManager.shared)
         } label: {
             Image("MenuBarIcon")
+                .accessibilityLabel("Clipplic controls")
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
 
         Settings {
             SettingsView()
@@ -37,7 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 1. Setup Floating Spotlight HUD with the shared manager
         FloatingPanelController.shared.setup(
             rootView: FloatingHUDView()
-                .environment(ClipboardManager.shared)
+                .environment(ClipboardManager.shared),
+            width: FloatingHUDView.panelWidth,
+            height: FloatingHUDView.panelHeight
         )
 
         // 2. Register Global Hotkey (⌘⇧V)

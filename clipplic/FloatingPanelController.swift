@@ -30,7 +30,7 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    public func setup<Content: View>(rootView: Content, width: CGFloat = 750, height: CGFloat = 520) {
+    public func setup<Content: View>(rootView: Content, width: CGFloat, height: CGFloat) {
         if panel != nil { return }
 
         let customPanel = FloatingPanel(
@@ -67,6 +67,21 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         } else {
             show()
         }
+    }
+
+    public func setWidth(_ width: CGFloat) {
+        guard let panel else { return }
+        var frame = panel.frame
+        frame.origin.x -= (width - frame.width) / 2
+        frame.size.width = width
+
+        if let screen = panel.screen {
+            let visibleFrame = screen.visibleFrame
+            frame.origin.x = max(visibleFrame.minX, min(frame.origin.x, visibleFrame.maxX - width))
+        }
+
+        panel.setFrame(frame, display: true)
+        panel.invalidateShadow()
     }
 
     public func show() {

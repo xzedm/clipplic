@@ -27,7 +27,11 @@
 ### 1. 🚀 Global Spotlight HUD (`⌘ + Shift + V`)
 * Trigger an ultra-responsive, floating Spotlight-style overlay from **any application** (VS Code, Chrome, Terminal, Slack, etc.).
 * **Keyboard-First Workflow:** Navigate with `↑` / `↓`, quick-paste top items with `⌘1`–`⌘9`, toggle pin with `⌘P`, delete with `⌘⌫`, and dismiss with `Esc`.
-* **Hardware-Style Keycap Badges:** Visual Apple Magic Keyboard keycap pills for quick reference.
+* **Compact Layout:** A single history list with search, source-app icons, and filter buttons below the search bar. Clearly labeled Preview, Pin, and Paste buttons keep everyday actions visible without shortcut clutter; deletion and settings live in the actions menu. The expand icon opens a wider HUD with an automatic preview beside the history list.
+
+### Menu Bar Controls
+* Clicking the Clipplic menu-bar icon opens app controls: capture status, history counts, pause/resume capture, automatic screenshot copying, Settings, About, and Quit.
+* Open clipboard history with the configured global shortcut (default **`⌘ + Shift + V`**).
 
 ### 2. ⚡ Auto-Paste Simulation
 * Press **`Enter`** on any item to automatically restore it to the clipboard, refocus your previous application, and paste directly into your active text field via synthetic `⌘V` keystrokes.
@@ -36,10 +40,10 @@
 * **Full Image Support:** Captures PNG, TIFF, and clipboard image data.
 * **Automated Screenshot Watcher:** Automatically detects and captures screenshots created with `⌘⇧3` and `⌘⇧4` into your history without needing to manually copy them.
 * **Fast Screenshot Paste (Instant `⌘V`):** Newly captured screenshots are automatically copied to the system clipboard in universal formats (`public.png`, `public.tiff`, and file URL). You can immediately press **`⌘V`** in Telegram, Slack, Discord, Chrome, Figma, or Notes to paste the screenshot without touching `⌘⇧V`.
-* **Aspect-Fit Thumbnails:** Crisp $40 \times 30\text{pt}$ card thumbnails in the list and a dark-velvet staging viewer in the detail pane.
+* **Image Thumbnails:** Compact thumbnails in the history list and a larger, aspect-fit preview on demand.
 
-### 4. 👁️ Spacebar Quick Look Lightbox
-* Tap **`Spacebar`** on any highlighted image or file item to launch an instant full-resolution Quick Look lightbox modal.
+### 4. 👁️ Spacebar Preview
+* Tap **`Spacebar`** on a highlighted item to open its preview. Press Space or Esc to return to history.
 * Displays image geometry ($W \times H\text{ px}$), exact file sizes, and file system paths.
 
 ### 5. 📁 Finder Files & Multi-File Selections
@@ -48,7 +52,7 @@
 
 ### 6. 🔍 Real-Time Search & Category Filters
 * Instant case-insensitive search across text contents, URLs, code snippets, file paths, and source app names.
-* Clickable filter pills: **All**, **Images**, **Files**, **Text**, **Links**, and **Code**.
+* Filter buttons below the HUD search bar offer **All**, **Images**, **Files**, **Text**, **Links**, **Code**, and **Rich text**.
 
 ### 7. 🛡️ Privacy Controls & App Blacklisting
 * **Password Manager Protection:** Automatically skips passwords and transient tokens from 1Password, Bitwarden, KeePassXC, and Apple Keychain.
@@ -104,12 +108,13 @@ To allow Clipplic to automatically paste (`⌘V`) items directly into your activ
 | **`⌘ + Shift + V`** | Open / Toggle Floating Spotlight HUD | Global (Any App) |
 | **`↑` / `↓`** | Select Previous / Next Item | Floating HUD |
 | **`↵` (Return)** | Paste Selected Item into Active App | Floating HUD |
-| **`Space`** | Open / Close Quick Look Lightbox Preview | Floating HUD |
+| **`Space`** | Open / Close Item Preview | Floating HUD |
 | **`⌘1` .. `⌘9`** | Quick-Paste Items 1 through 9 | Floating HUD |
+| **`⌘F`** | Focus Search | Floating HUD |
 | **`⌘P`** | Pin / Unpin Selected Item | Floating HUD |
 | **`⌘⌫` (Backspace)** | Delete Selected Item | Floating HUD |
 | **`⌘,`** | Open Preferences / Settings Window | Floating HUD / Menu Bar |
-| **`Esc`** | Dismiss Quick Look / Close Floating HUD | Floating HUD |
+| **`Esc`** | Dismiss Preview / Close Floating HUD | Floating HUD |
 
 ---
 
@@ -137,7 +142,7 @@ edit `packaging/render_background.swift` and run
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 UI Layer (SwiftUI + AppKit)                 │
-│  • MenuBarExtra (Native macOS Status Bar Menu)              │
+│  • MenuBarExtra (App Controls & Capture Status)              │
 │  • FloatingPanel (Custom NSPanel Floating HUD)              │
 │  • SettingsView (Multi-Tab Preferences Window)              │
 └──────────────────────────────▲──────────────────────────────┘
@@ -172,8 +177,8 @@ edit `packaging/render_background.swift` and run
 ```
 clipplic/
 ├── clipplicApp.swift              # App entry point, MenuBarExtra scene & AppDelegate
-├── ContentView.swift              # Menu bar popover interface (Search, List, Actions)
-├── FloatingHUDView.swift          # Spotlight HUD dual-pane interface & Lightbox modal
+├── MenuBarControlsView.swift      # Menu bar status, capture controls & settings
+├── FloatingHUDView.swift          # Compact history list & on-demand preview
 ├── FloatingPanelController.swift  # Floating NSPanel window management
 ├── ClipboardManager.swift         # Main Observable coordinator
 ├── ClipboardMonitor.swift         # NSPasteboard observer & sensitive data filters
