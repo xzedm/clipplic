@@ -11,8 +11,11 @@ public final class StorageService {
     private let directoryURL: URL
     private let imagesDirectoryURL: URL
     private let fileURL: URL
-    private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    /// Serial queue for history writes: encoding hundreds of items blocked the UI on the main thread.
+    private let writeQueue = DispatchQueue(label: "app.clipplic.storage.write", qos: .utility)
+    /// Bumped on every save so queued writes that were superseded can be skipped.
+    private let writeGeneration = WriteGeneration()
     private let imageMemoryCache = NSCache<NSString, NSImage>()
     private var lastOrphanCleanup: Date = .distantPast
     public init(folderName: String = "clipplic", fileName: String = "history.json") {
@@ -21,12 +24,6 @@ public final class StorageService {
         self.directoryURL = appSupport.appendingPathComponent(folderName, isDirectory: true)
         self.imagesDirectoryURL = directoryURL.appendingPathComponent("images", isDirectory: true)
         self.fileURL = directoryURL.appendingPathComponent(fileName)
-
-        let enc = JSONEncoder()
-        // Compact output: history can hold hundreds of items with RTF payloads
-        enc.outputFormatting = [.sortedKeys]
-        enc.dateEncodingStrategy = .iso8601
-        self.encoder = enc
 
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
@@ -50,8 +47,41 @@ public final class StorageService {
         }
     }
 
+    /// Saves history in the background. Writes stay in order, and a write that a newer save replaces is skipped.
     public func save(items: [ClipboardItem]) {
         ensureDirectoriesExist()
+        let generation = writeGeneration.next()
+        let fileURL = fileURL
+        let imagesDirectoryURL = imagesDirectoryURL
+
+        var referencedImages: Set<String>? = nil
+        // Clean up orphaned images at most once per 5 minutes
+        if Date().timeIntervalSince(lastOrphanCleanup) > 300 {
+            lastOrphanCleanup = Date()
+            referencedImages = Set(items.compactMap { $0.imageFileName })
+        }
+
+        let writeGeneration = writeGeneration
+        writeQueue.async {
+            if writeGeneration.isLatest(generation) {
+                Self.write(items, to: fileURL)
+            }
+            if let referencedImages {
+                Self.cleanupOrphanedImages(in: imagesDirectoryURL, keeping: referencedImages)
+            }
+        }
+    }
+
+    /// Blocks until every queued write is on disk. Call it before quitting.
+    public func flush() {
+        writeQueue.sync {}
+    }
+
+    private nonisolated static func write(_ items: [ClipboardItem], to fileURL: URL) {
+        let encoder = JSONEncoder()
+        // Compact output: history can hold hundreds of items with RTF payloads
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
         do {
             let data = try encoder.encode(items)
             try data.write(to: fileURL, options: .atomic)
@@ -60,16 +90,10 @@ public final class StorageService {
         } catch {
             print("[StorageService] Failed to save history: \(error.localizedDescription)")
         }
-
-        // Clean up orphaned images at most once per 5 minutes
-        if Date().timeIntervalSince(lastOrphanCleanup) > 300 {
-            lastOrphanCleanup = Date()
-            let referencedImages = Set(items.compactMap { $0.imageFileName })
-            cleanupOrphanedImages(activeImageFileNames: referencedImages)
-        }
     }
 
     public func load() -> [ClipboardItem] {
+        flush()
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return []
         }
@@ -88,6 +112,9 @@ public final class StorageService {
 
     public func clear() {
         imageMemoryCache.removeAllObjects()
+        // Drop queued writes so an older history can't reappear after clearing.
+        _ = writeGeneration.next()
+        flush()
         try? FileManager.default.removeItem(at: fileURL)
         try? FileManager.default.removeItem(at: imagesDirectoryURL)
         ensureDirectoriesExist()
@@ -133,15 +160,35 @@ public final class StorageService {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private func cleanupOrphanedImages(activeImageFileNames: Set<String>) {
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: imagesDirectoryURL.path) else {
+    private nonisolated static func cleanupOrphanedImages(in directory: URL, keeping activeImageFileNames: Set<String>) {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return
         }
-        for file in files {
-            if !activeImageFileNames.contains(file) {
-                let fileURL = imagesDirectoryURL.appendingPathComponent(file)
+        // The item list is a snapshot, so skip recent files: an image saved since then may not be in it yet.
+        let cutoff = Date().addingTimeInterval(-600)
+        for file in files where !activeImageFileNames.contains(file) {
+            let fileURL = directory.appendingPathComponent(file)
+            let modified = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if modified < cutoff {
                 try? FileManager.default.removeItem(at: fileURL)
             }
         }
+    }
+}
+
+/// Thread-safe counter that marks which queued history write is the newest.
+private final class WriteGeneration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func next() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        value += 1
+        return value
+    }
+
+    func isLatest(_ generation: Int) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return generation == value
     }
 }

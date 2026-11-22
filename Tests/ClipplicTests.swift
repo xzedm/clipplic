@@ -82,6 +82,14 @@ final class ClipplicTestRunner {
         let pinnedItem = ClipboardItem(textContent: "Important Pinned Secret Note", isPinned: true)
         manager.items.append(pinnedItem)
         assert(manager.pinnedCount == 1, "Pinning: Correct pinned count")
+        assert(manager.filteredItems.first?.id == pinnedItem.id, "Pinning: Pinned item shown first")
+
+        // 4b. Toggling a pin moves the item to the top and back
+        let olderItem = manager.items.first(where: { $0.textContent == "https://apple.com/swift" })!
+        manager.togglePin(olderItem)
+        assert(manager.filteredItems.prefix(2).allSatisfy(\.isPinned), "Pinning: Toggled item joins pinned section")
+        manager.togglePin(olderItem)
+        assert(manager.filteredItems.first?.id == pinnedItem.id && manager.pinnedCount == 1, "Pinning: Unpin returns item to history")
 
         // 5. Search
         manager.searchText = "apple.com"
@@ -102,6 +110,15 @@ final class ClipplicTestRunner {
         // 8. Clear unpinned history
         manager.clearHistory(includingPinned: false)
         assert(manager.items.count == 1 && manager.items.first?.isPinned == true, "Clear history: Preserves pinned items")
+
+        // 8b. Background saves: clearing history must not be undone by a queued write
+        manager.saveNow()
+        storage.save(items: manager.items)
+        manager.clearHistory(includingPinned: true)
+        assert(storage.load().isEmpty, "Storage: Clear wins over queued background writes")
+        manager.items.append(pinnedItem)
+        manager.saveNow()
+        assert(storage.load().count == 1, "Storage: saveNow writes history to disk before returning")
 
         // 9. Expiration pruning
         let oldDate = Calendar.current.date(byAdding: .day, value: -45, to: Date())!
@@ -212,6 +229,16 @@ final class ClipplicTestRunner {
         assert(autoCopyFired && pb.data(forType: .png) != nil, "Fast Screenshot Auto-Copy: Screenshot immediately ready in NSPasteboard for ⌘V")
 
         try? FileManager.default.removeItem(atPath: tempScreenshotPath)
+
+        // 10. Paste as Plain Text strips formatting
+        let rtf = NSAttributedString(string: "Bold text", attributes: [.font: NSFont.boldSystemFont(ofSize: 14)])
+        let rtfData = rtf.rtf(from: NSRange(location: 0, length: rtf.length), documentAttributes: [:])
+        let richItem = ClipboardItem(contentType: .rtf, textContent: "Bold text", rtfData: rtfData)
+        assert(richItem.hasRichText, "Rich text item offers plain-text paste")
+        manager.copyToClipboard(richItem, updateTimestamp: false)
+        assert(pb.data(forType: .rtf) != nil, "Normal paste keeps RTF formatting")
+        manager.copyToClipboard(richItem, updateTimestamp: false, plainText: true)
+        assert(pb.data(forType: .rtf) == nil && pb.string(forType: .string) == "Bold text", "Plain-text paste writes only the string")
 
         print("")
     }
