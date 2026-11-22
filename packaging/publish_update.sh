@@ -13,7 +13,12 @@ NOTES="${3:-}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Sparkle's tools come with the Swift package; Xcode keeps them in DerivedData.
-TOOL="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*artifacts/sparkle/Sparkle/bin/generate_appcast' -type f 2>/dev/null | head -1)"
+# Set SPARKLE_BIN to the folder holding generate_appcast to pick a specific copy.
+if [[ -n "${SPARKLE_BIN:-}" ]]; then
+  TOOL="$SPARKLE_BIN/generate_appcast"
+else
+  TOOL="$(find "$ROOT/build" "$HOME/Library/Developer/Xcode/DerivedData" -path '*artifacts/sparkle/Sparkle/bin/generate_appcast' -type f 2>/dev/null | head -1)"
+fi
 if [[ -z "$TOOL" ]]; then
   echo "generate_appcast not found. Open clipplic.xcodeproj in Xcode once so it downloads the Sparkle package." >&2
   exit 1
