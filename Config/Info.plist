@@ -6,7 +6,7 @@
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/xzedm/clipplic/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_PUBLIC_KEY</string>
+	<string>ePiM8z30VpguSVQdiCnzKG2Pq3Sxme0lPpPzyJksZuo=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
