@@ -5,11 +5,16 @@
 
 import AppKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 @MainActor
 public final class StorageService {
     private let directoryURL: URL
     private let imagesDirectoryURL: URL
+    private let thumbnailsDirectoryURL: URL
+    /// Longest side of list thumbnails in pixels (rows draw images at 36 pt, so this covers 2x and 3x).
+    static let thumbnailMaxPixelSize = 144
     private let fileURL: URL
     private let decoder: JSONDecoder
     /// Serial queue for history writes: encoding hundreds of items blocked the UI on the main thread.
@@ -23,6 +28,7 @@ public final class StorageService {
             ?? FileManager.default.temporaryDirectory
         self.directoryURL = appSupport.appendingPathComponent(folderName, isDirectory: true)
         self.imagesDirectoryURL = directoryURL.appendingPathComponent("images", isDirectory: true)
+        self.thumbnailsDirectoryURL = directoryURL.appendingPathComponent("thumbnails", isDirectory: true)
         self.fileURL = directoryURL.appendingPathComponent(fileName)
 
         let dec = JSONDecoder()
@@ -38,7 +44,7 @@ public final class StorageService {
     private func ensureDirectoriesExist() {
         // Owner-only access: clipboard history and screenshots may contain secrets
         let ownerOnly: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
-        for url in [directoryURL, imagesDirectoryURL] {
+        for url in [directoryURL, imagesDirectoryURL, thumbnailsDirectoryURL] {
             if !FileManager.default.fileExists(atPath: url.path) {
                 try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: ownerOnly)
             } else {
@@ -53,6 +59,7 @@ public final class StorageService {
         let generation = writeGeneration.next()
         let fileURL = fileURL
         let imagesDirectoryURL = imagesDirectoryURL
+        let thumbnailsDirectoryURL = thumbnailsDirectoryURL
 
         var referencedImages: Set<String>? = nil
         // Clean up orphaned images at most once per 5 minutes
@@ -68,6 +75,7 @@ public final class StorageService {
             }
             if let referencedImages {
                 Self.cleanupOrphanedImages(in: imagesDirectoryURL, keeping: referencedImages)
+                Self.cleanupOrphanedImages(in: thumbnailsDirectoryURL, keeping: referencedImages)
             }
         }
     }
@@ -117,6 +125,7 @@ public final class StorageService {
         flush()
         try? FileManager.default.removeItem(at: fileURL)
         try? FileManager.default.removeItem(at: imagesDirectoryURL)
+        try? FileManager.default.removeItem(at: thumbnailsDirectoryURL)
         ensureDirectoriesExist()
     }
 
@@ -127,6 +136,7 @@ public final class StorageService {
         let destinationURL = imagesDirectoryURL.appendingPathComponent(fileName)
         do {
             try data.write(to: destinationURL, options: .atomic)
+            makeThumbnail(from: destinationURL, fileName: fileName)
             return fileName
         } catch {
             print("[StorageService] Failed to save image data: \(error.localizedDescription)")
@@ -156,8 +166,58 @@ public final class StorageService {
 
     public func deleteImage(for fileName: String) {
         imageMemoryCache.removeObject(forKey: fileName as NSString)
-        let url = imageURL(for: fileName)
-        try? FileManager.default.removeItem(at: url)
+        imageMemoryCache.removeObject(forKey: Self.thumbnailCacheKey(fileName))
+        try? FileManager.default.removeItem(at: imageURL(for: fileName))
+        try? FileManager.default.removeItem(at: thumbnailURL(for: fileName))
+    }
+
+    // MARK: - Thumbnails
+
+    public func thumbnailURL(for fileName: String) -> URL {
+        thumbnailsDirectoryURL.appendingPathComponent(fileName)
+    }
+
+    /// Small image for list rows. Images saved before thumbnails existed get one made the first time they're shown.
+    public func loadThumbnail(for fileName: String) -> NSImage? {
+        let key = Self.thumbnailCacheKey(fileName)
+        if let cached = imageMemoryCache.object(forKey: key) {
+            return cached
+        }
+
+        let url = thumbnailURL(for: fileName)
+        var image = NSImage(contentsOf: url)
+        if image == nil {
+            image = makeThumbnail(from: imageURL(for: fileName), fileName: fileName)
+        }
+        guard let image else { return nil }
+
+        let cost = Self.thumbnailMaxPixelSize * Self.thumbnailMaxPixelSize * 4
+        imageMemoryCache.setObject(image, forKey: key, cost: cost)
+        return image
+    }
+
+    /// Downsamples without decoding the full image, then saves the result as PNG.
+    @discardableResult
+    private func makeThumbnail(from sourceURL: URL, fileName: String) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: Self.thumbnailMaxPixelSize
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+
+        let destinationURL = thumbnailURL(for: fileName)
+        if let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, UTType.png.identifier as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, cgImage, nil)
+            CGImageDestinationFinalize(destination)
+        }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
+    private static func thumbnailCacheKey(_ fileName: String) -> NSString {
+        "thumb:\(fileName)" as NSString
     }
 
     private nonisolated static func cleanupOrphanedImages(in directory: URL, keeping activeImageFileNames: Set<String>) {

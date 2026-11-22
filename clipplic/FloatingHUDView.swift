@@ -677,7 +677,7 @@ struct HUDItemRow: View {
 
     @ViewBuilder
     private var leadingVisual: some View {
-        if item.contentType == .image, let fileName = item.imageFileName, let image = storage.loadImage(for: fileName) {
+        if item.contentType == .image, let fileName = item.imageFileName, let image = storage.loadThumbnail(for: fileName) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
