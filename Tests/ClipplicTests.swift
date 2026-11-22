@@ -329,6 +329,23 @@ final class ClipplicTestRunner {
             "4K Large Image Encode, Hash, Save & Cache Load (\(ByteCountFormatter.string(fromByteCount: Int64(largePngData.count), countStyle: .file))): \(String(format: "%.2f", largeImageElapsed)) ms"
         )
 
+        // Thumbnails: made on save, small, and rebuilt when missing
+        let thumbURL = storage.thumbnailURL(for: savedFileName!)
+        let thumbOnDisk = FileManager.default.fileExists(atPath: thumbURL.path)
+        let thumbSize = storage.loadThumbnail(for: savedFileName!)?.size ?? .zero
+        assert(thumbOnDisk && max(thumbSize.width, thumbSize.height) <= CGFloat(StorageService.thumbnailMaxPixelSize) && thumbSize.width > 0,
+               "Thumbnail: Saved with image at ≤\(StorageService.thumbnailMaxPixelSize) px (\(Int(thumbSize.width))×\(Int(thumbSize.height)))")
+        let backfillStorage = createIsolatedStorage()
+        let backfillName = backfillStorage.saveImageData(largePngData, id: UUID())!
+        try? FileManager.default.removeItem(at: backfillStorage.thumbnailURL(for: backfillName))
+        let thumbStart = CFAbsoluteTimeGetCurrent()
+        let backfilled = backfillStorage.loadThumbnail(for: backfillName)
+        let thumbElapsed = (CFAbsoluteTimeGetCurrent() - thumbStart) * 1000
+        assert(backfilled != nil && FileManager.default.fileExists(atPath: backfillStorage.thumbnailURL(for: backfillName).path),
+               "Thumbnail: Rebuilt for older images without one (\(String(format: "%.2f", thumbElapsed)) ms)")
+        backfillStorage.deleteImage(for: backfillName)
+        assert(!FileManager.default.fileExists(atPath: backfillStorage.thumbnailURL(for: backfillName).path), "Thumbnail: Deleted with its image")
+
         // Reset history limit back to default
         PreferencesService.shared.historyLimit = 500
         print("")
