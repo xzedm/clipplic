@@ -8,6 +8,7 @@ import ServiceManagement
 import SwiftUI
 struct SettingsView: View {
     @State private var prefs = PreferencesService.shared
+    @State private var updater = UpdaterService.shared
     @Environment(ClipboardManager.self) private var manager
     @State private var selectedTab: SettingsTab = .general
     @State private var newCustomBundleId: String = ""
@@ -98,6 +99,20 @@ struct SettingsView: View {
                     Text("Clipplic will start silently in the menu bar on system boot.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+
+                    if updater.isConfigured {
+                        HStack {
+                            Toggle("Check for updates automatically", isOn: Bindable(updater).automaticallyChecksForUpdates)
+                                .toggleStyle(.checkbox)
+                                .font(.system(size: 13))
+                            Spacer()
+                            Button("Check Now") { updater.checkForUpdates() }
+                                .disabled(!updater.canCheckForUpdates)
+                        }
+                        Text("Version \(updater.currentVersion)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(6)
             }
