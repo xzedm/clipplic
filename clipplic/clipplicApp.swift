@@ -43,7 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             height: FloatingHUDView.panelHeight
         )
 
-        // 2. Register Global Hotkey (⌘⇧V)
+        // 2. Start Sparkle so it can check for updates in the background
+        UpdaterService.shared.start()
+
+        // 3. Register Global Hotkey (⌘⇧V)
         HotkeyManager.shared.register {
             PasteService.shared.recordFrontmostApp()
             FloatingPanelController.shared.toggle()

@@ -65,7 +65,10 @@
 * Pinned items (`isPinned = true`) are permanent and never auto-deleted.
 * In-memory `NSCache` with a 50 MB hard ceiling for zero-latency image decoding and automatic memory purging under system pressure.
 
-### 9. 🚀 Launch at Login
+### 9. 🔄 Automatic Updates
+* Clipplic checks for new versions once a day with [Sparkle](https://sparkle-project.org) and installs them after you confirm. Use **Check for Updates…** in the menu bar menu to check right away, or turn automatic checks off in Settings.
+
+### 10. 🚀 Launch at Login
 * Native macOS `SMAppService` integration configurable with one click in Settings.
 
 ---
@@ -202,6 +205,23 @@ clipplic/
 * **Idle Memory:** $\approx 18 - 28\text{ MB}$ RAM.
 * **Image Memory Cache:** Capped at $50\text{ MB}$ with automatic system memory pressure purging.
 * **Binary Size:** Compact native binary ($< 5\text{ MB}$) with zero external framework dependencies.
+
+---
+
+## 🚢 Releasing an Update
+
+Sparkle only installs updates signed with the project's EdDSA key.
+
+**One-time setup**
+1. Open the project in Xcode once so it downloads the Sparkle package.
+2. Run Sparkle's `generate_keys` (in DerivedData under `SourcePackages/artifacts/sparkle/Sparkle/bin/`). It saves the private key in your login Keychain and prints the public key.
+3. Put the public key in `SUPublicEDKey` in [`Config/Info.plist`](Config/Info.plist). Until then, the app turns updates off. Back up the private key (`generate_keys -x key-backup.txt`): without it you can't ship updates to existing installs.
+
+**Each release**
+1. Raise `CURRENT_PROJECT_VERSION` (the build number Sparkle compares) and `MARKETING_VERSION`.
+2. Archive, sign with Developer ID, notarize, and build the DMG as usual.
+3. Run `packaging/publish_update.sh build/Clipplic-<version>.dmg v<version> [notes.md]` to sign the DMG and update `appcast.xml`.
+4. Upload the DMG to the GitHub release with that tag, then push `appcast.xml` to `main`.
 
 ---
 

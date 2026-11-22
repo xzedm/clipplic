@@ -41,6 +41,16 @@ struct MenuBarControlsView: View {
             Label("About Clipplic", systemImage: "info.circle")
         }
 
+        if UpdaterService.shared.isConfigured {
+            Button {
+                FloatingPanelController.shared.hide()
+                UpdaterService.shared.checkForUpdates()
+            } label: {
+                Label("Check for Updates…", systemImage: "arrow.down.circle")
+            }
+            .disabled(!UpdaterService.shared.canCheckForUpdates)
+        }
+
         Divider()
 
         Button {
