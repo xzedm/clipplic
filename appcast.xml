@@ -1,0 +1,22 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>clipplic</title>
+        <item>
+            <title>1.4</title>
+            <pubDate>Sun, 22 Nov 2026 21:18:09 +0500</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>1.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.5</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[## What's New in 1.4
+
+- **Pinning works as expected:** pinned items stay at the top of the HUD under their own section, and every row has a pin button.
+- **Paste as plain text:** press ⇧↵ (or use the right-click menu) to paste without fonts or colours.
+- **Smoother scrolling:** image rows use small thumbnails instead of full-size screenshots.
+- **No more hitches when saving:** history is written in the background.
+- **Automatic updates:** Clipplic now checks for new versions once a day. Use "Check for Updates…" in the menu bar menu any time.
+]]></description>
+            <enclosure url="https://github.com/xzedm/clipplic/releases/download/v1.4/Clipplic-1.4.dmg" length="6773419" type="application/octet-stream" sparkle:edSignature="L7Ci3AlxBwtW19ih6vg5oKEF/vTEQ+XxMV7LhMo8gDCveUVwAJMu3EdV83yvsL4tpJxQB6NztROPtWXpl5aPBQ=="/>
+        </item>
+    </channel>
+</rss>
