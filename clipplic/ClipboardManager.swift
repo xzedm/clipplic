@@ -64,7 +64,13 @@ public final class ClipboardManager {
         startPeriodicPruning()
     }
 
+    /// Items shown in the UI: pinned items stay on top, then the rest by recency.
     public var filteredItems: [ClipboardItem] {
+        let matching = matchingItems
+        return matching.filter(\.isPinned) + matching.filter { !$0.isPinned }
+    }
+
+    private var matchingItems: [ClipboardItem] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if query.isEmpty && selectedTypeFilter == nil {
@@ -146,7 +152,8 @@ public final class ClipboardManager {
         scheduleSave()
     }
 
-    public func copyToClipboard(_ item: ClipboardItem, updateTimestamp: Bool = true) {
+    /// - Parameter plainText: write only the text, without rich-text formatting (text items only).
+    public func copyToClipboard(_ item: ClipboardItem, updateTimestamp: Bool = true, plainText: Bool = false) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
@@ -194,7 +201,7 @@ public final class ClipboardManager {
 
         case .text, .code, .url, .rtf:
             let pasteboardItem = NSPasteboardItem()
-            if let rtf = item.rtfData {
+            if !plainText, let rtf = item.rtfData {
                 pasteboardItem.setData(rtf, forType: .rtf)
             }
             if let text = item.textContent {
@@ -328,6 +335,7 @@ public final class ClipboardManager {
         saveTask?.cancel()
         saveTask = nil
         storage.save(items: items)
+        storage.flush()
     }
 
     private func startPeriodicPruning() {

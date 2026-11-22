@@ -26,7 +26,7 @@
 
 ### 1. 🚀 Global Spotlight HUD (`⌘ + Shift + V`)
 * Trigger an ultra-responsive, floating Spotlight-style overlay from **any application** (VS Code, Chrome, Terminal, Slack, etc.).
-* **Keyboard-First Workflow:** Navigate with `↑` / `↓`, quick-paste top items with `⌘1`–`⌘9`, toggle pin with `⌘P`, delete with `⌘⌫`, and dismiss with `Esc`.
+* **Keyboard-First Workflow:** Navigate with `↑` / `↓`, quick-paste top items with `⌘1`–`⌘9`, paste as plain text with `⇧↵`, toggle pin with `⌘P`, delete with `⌘⌫`, and dismiss with `Esc`.
 * **Compact Layout:** A single history list with search, source-app icons, and filter buttons below the search bar. Clearly labeled Preview, Pin, and Paste buttons keep everyday actions visible without shortcut clutter; deletion and settings live in the actions menu. The expand icon opens a wider HUD with an automatic preview beside the history list.
 
 ### Menu Bar Controls
@@ -35,6 +35,7 @@
 
 ### 2. ⚡ Auto-Paste Simulation
 * Press **`Enter`** on any item to automatically restore it to the clipboard, refocus your previous application, and paste directly into your active text field via synthetic `⌘V` keystrokes.
+* Press **`Shift + Enter`** (or choose **Paste as Plain Text** from the right-click menu) to paste without fonts, colours, or other rich-text formatting.
 
 ### 3. 🖼️ Screenshots & Rich Media Support
 * **Full Image Support:** Captures PNG, TIFF, and clipboard image data.

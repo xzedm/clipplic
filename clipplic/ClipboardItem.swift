@@ -193,3 +193,10 @@ public struct ClipboardItem: Identifiable, Codable, Equatable, Hashable, Sendabl
         }
     }
 }
+
+extension ClipboardItem {
+    /// True when the item carries formatting that "Paste as Plain Text" would remove.
+    public var hasRichText: Bool {
+        rtfData != nil && textContent != nil
+    }
+}

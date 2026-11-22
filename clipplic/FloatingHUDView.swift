@@ -191,8 +191,11 @@ struct FloatingHUDView: View {
                 Button(isShowingQuickLook ? "Close Preview (Space)" : "Preview (Space)") {
                     togglePreview()
                 }
+                if item.hasRichText {
+                    Button("Paste as Plain Text (⇧↵)") { pasteItem(item, plainText: true) }
+                }
                 Button(item.isPinned ? "Unpin (⌘P)" : "Pin (⌘P)") {
-                    manager.togglePin(item)
+                    togglePin(item)
                 }
                 Button("Delete (⌘⌫)", role: .destructive) { deleteItem(item) }
                 Divider()
@@ -222,7 +225,10 @@ struct FloatingHUDView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    ForEach(items) { item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        if hasPinnedItems && (index == 0 || items[index - 1].isPinned != item.isPinned) {
+                            sectionHeader(item.isPinned ? "Pinned" : "Recent", isFirst: index == 0)
+                        }
                         HUDItemRow(
                             item: item,
                             storage: manager.storage,
@@ -233,11 +239,12 @@ struct FloatingHUDView: View {
                                 isSearchFieldFocused = false
                             },
                             onPaste: { pasteItem(item) },
+                            onPastePlainText: { pasteItem(item, plainText: true) },
                             onQuickLook: {
                                 selectedItemId = item.id
                                 togglePreview()
                             },
-                            onTogglePin: { manager.togglePin(item) },
+                            onTogglePin: { togglePin(item) },
                             onDelete: { deleteItem(item) }
                         )
                         .id(item.id)
@@ -255,6 +262,19 @@ struct FloatingHUDView: View {
         }
     }
 
+    private var hasPinnedItems: Bool { items.first?.isPinned == true }
+
+    private func sectionHeader(_ title: String, isFirst: Bool) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.top, isFirst ? 2 : 10)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
     private var footer: some View {
         HStack(spacing: 10) {
             Button {
@@ -269,7 +289,7 @@ struct FloatingHUDView: View {
             .help(isShowingQuickLook ? "Back to history (Space or Esc)" : "Preview selected item (Space)")
 
             Button {
-                if let item = selectedItem { manager.togglePin(item) }
+                if let item = selectedItem { togglePin(item) }
             } label: {
                 Label(selectedItem?.isPinned == true ? "Unpin" : "Pin", systemImage: selectedItem?.isPinned == true ? "pin.fill" : "pin")
                     .padding(.horizontal, 6)
@@ -277,7 +297,7 @@ struct FloatingHUDView: View {
             }
             .buttonStyle(.bordered)
             .disabled(selectedItem == nil)
-            .help(selectedItem?.isPinned == true ? "Unpin selected item (⌘P)" : "Keep selected item in history (⌘P)")
+            .help(selectedItem?.isPinned == true ? "Unpin selected item (⌘P)" : "Pin selected item to the top (⌘P)")
 
             Spacer()
 
@@ -290,7 +310,7 @@ struct FloatingHUDView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(selectedItem == nil)
-            .help("Paste selected item (Return)")
+            .help("Paste selected item (Return) · Shift-Return pastes as plain text")
         }
         .font(.system(size: 12, weight: .medium))
     }
@@ -396,6 +416,14 @@ struct FloatingHUDView: View {
         }
     }
 
+    private func togglePin(_ item: ClipboardItem) {
+        // Keep the toggled item selected while it moves into or out of the Pinned section.
+        selectedItemId = item.id
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            manager.togglePin(item)
+        }
+    }
+
     private func togglePreview() {
         guard selectedItem != nil else { return }
         isSearchFieldFocused = false
@@ -411,8 +439,8 @@ struct FloatingHUDView: View {
     }
 
     // MARK: - Helpers & Actions
-    private func pasteItem(_ item: ClipboardItem) {
-        PasteService.shared.restoreAndPaste(item: item, manager: manager, autoPaste: true)
+    private func pasteItem(_ item: ClipboardItem, plainText: Bool = false) {
+        PasteService.shared.restoreAndPaste(item: item, manager: manager, autoPaste: true, plainText: plainText)
     }
 
     private func openSettings() {
@@ -475,10 +503,12 @@ struct FloatingHUDView: View {
             }
 
             // If Quick Look is open, Enter pastes
+            // Shift + Return pastes without formatting.
+            let wantsPlainText = event.modifierFlags.contains(.shift)
             if isShowingQuickLook && event.keyCode == 36 {
                 if let item = selectedItem {
                     isShowingQuickLook = false
-                    pasteItem(item)
+                    pasteItem(item, plainText: wantsPlainText)
                 }
                 return nil
             }
@@ -498,7 +528,7 @@ struct FloatingHUDView: View {
             // Enter / Return
             if event.keyCode == 36 {
                 if let item = selectedItem {
-                    pasteItem(item)
+                    pasteItem(item, plainText: wantsPlainText)
                 }
                 return nil
             }
@@ -519,7 +549,7 @@ struct FloatingHUDView: View {
             // Command + P (Toggle Pin)
             if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "p" {
                 if let item = selectedItem {
-                    manager.togglePin(item)
+                    togglePin(item)
                 }
                 return nil
             }
@@ -569,6 +599,7 @@ struct HUDItemRow: View {
     let isHovered: Bool
     let onSelect: () -> Void
     let onPaste: () -> Void
+    let onPastePlainText: () -> Void
     let onQuickLook: () -> Void
     let onTogglePin: () -> Void
     let onDelete: () -> Void
@@ -598,11 +629,18 @@ struct HUDItemRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                if item.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Pinned")
+                if item.isPinned || isHovered || isSelected {
+                    Button(action: onTogglePin) {
+                        Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(item.isPinned ? Color.orange : Color.secondary)
+                            .rotationEffect(.degrees(item.isPinned ? 0 : 45))
+                            .frame(width: 26, height: 26)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(item.isPinned ? "Unpin (⌘P)" : "Pin to top (⌘P)")
+                    .accessibilityLabel(item.isPinned ? "Unpin" : "Pin")
                 }
 
             }
@@ -619,6 +657,9 @@ struct HUDItemRow: View {
         .simultaneousGesture(TapGesture(count: 2).onEnded { onPaste() })
         .contextMenu {
             Button("Paste (↵)", action: onPaste)
+            if item.hasRichText {
+                Button("Paste as Plain Text (⇧↵)", action: onPastePlainText)
+            }
             Button("Preview (Space)", action: onQuickLook)
             Button(item.isPinned ? "Unpin (⌘P)" : "Pin (⌘P)", action: onTogglePin)
             if item.contentType == .image, let fileName = item.imageFileName {
